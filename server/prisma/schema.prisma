@@ -1,0 +1,200 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  role      String   @default("REP")
+  territory String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  doctors          DoctorProfile[]
+  battlecards      Battlecard[]
+  practiceSessions PracticeSession[]
+  postCallAnalyses PostCallAnalysis[]
+  notes            Note[]
+}
+
+model DoctorProfile {
+  id                  String    @id @default(cuid())
+  fullName            String
+  specialty           String
+  city                String
+  hospitalOrClinic    String?
+  personaType         String
+  seniorityLevel      String
+  therapyArea         String
+  targetProduct       String
+  likelyConcerns      String
+  competitorPreference String?
+  lastInteractionDate DateTime?
+  notes               String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  battlecards         Battlecard[]
+  practiceSessions    PracticeSession[]
+  meetingTranscripts  MeetingTranscript[]
+  postCallAnalyses    PostCallAnalysis[]
+  conversationThreads ConversationThread[]
+  doctorNotes         Note[]
+}
+
+model Product {
+  id              String   @id @default(cuid())
+  productName     String
+  therapyArea     String
+  indication      String
+  keyBenefits     String
+  sideEffects     String
+  differentiators String
+  competitorNames String
+  approvedClaims  String
+  disclaimers     String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  battlecards Battlecard[]
+}
+
+model Battlecard {
+  id        String   @id @default(cuid())
+  content   String
+  repNotes  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  doctorId  String
+  doctor    DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product       @relation(fields: [productId], references: [id])
+  userId    String
+  user      User          @relation(fields: [userId], references: [id])
+}
+
+model PracticeSession {
+  id              String   @id @default(cuid())
+  difficulty      String
+  objectionFocus  String
+  status          String   @default("active")
+  durationSeconds Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  doctorId String
+  doctor   DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User          @relation(fields: [userId], references: [id])
+
+  turns  PracticeTurn[]
+  report PracticeReport?
+}
+
+model PracticeTurn {
+  id        String   @id @default(cuid())
+  role      String
+  content   String
+  timestamp DateTime @default(now())
+
+  sessionId String
+  session   PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}
+
+model PracticeReport {
+  id                     String   @id @default(cuid())
+  summary                String
+  strengths              String
+  weakMoments            String
+  missedOpportunities    String
+  objectionHandlingScore Int
+  clarityScore           Int
+  confidenceScore        Int
+  complianceScore        Int
+  improvements           String
+  nextPractice           String
+  createdAt              DateTime @default(now())
+
+  sessionId String          @unique
+  session   PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}
+
+model MeetingTranscript {
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  isDemo    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  doctorId String
+  doctor   DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  analysis PostCallAnalysis?
+}
+
+model PostCallAnalysis {
+  id              String   @id @default(cuid())
+  summary         String
+  doctorConcerns  String
+  wentWell        String
+  couldImprove    String
+  missedMoments   String
+  doctorIntent    String
+  nextBestActions String
+  followUpEmail   String
+  crmNotes        String
+  coachingSummary String
+  createdAt       DateTime @default(now())
+
+  doctorId     String
+  doctor       DoctorProfile     @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User              @relation(fields: [userId], references: [id])
+  transcriptId String?           @unique
+  transcript   MeetingTranscript? @relation(fields: [transcriptId], references: [id])
+}
+
+model ConversationThread {
+  id        String   @id @default(cuid())
+  title     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  doctorId String
+  doctor   DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  messages Message[]
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  role      String
+  content   String
+  metadata  String?
+  createdAt DateTime @default(now())
+
+  threadId String
+  thread   ConversationThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  doctorId String
+  doctor   DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User          @relation(fields: [userId], references: [id])
+}
