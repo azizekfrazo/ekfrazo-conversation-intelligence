@@ -1,97 +1,112 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import {
-  Mic, MicOff, PhoneOff, Wifi, WifiOff, Clock, User,
-  Stethoscope, ArrowLeft, AlertCircle, MessageSquare,
+  Mic, MicOff, Square, ArrowLeft, Stethoscope, User,
+  CheckCircle, XCircle, AlertTriangle, ChevronRight, BarChart2,
 } from 'lucide-react'
 import { api } from '../lib/api'
 import { useAuth } from '../hooks/useAuth'
-import { DoctorProfile, Difficulty, ObjectionType, PracticeTurn } from '../types'
+import { DoctorProfile, Difficulty, ObjectionType, PracticeReport } from '../types'
 import { Button } from '../components/ui/button'
 import { Badge } from '../components/ui/badge'
 import { Textarea } from '../components/ui/textarea'
-import { personaColors, personaLabels, formatTime, difficultyColors, objectionLabels, doctorPhotoUrl } from '../lib/utils'
+import {
+  personaColors, personaLabels, formatTime, difficultyColors,
+  objectionLabels, doctorPhotoUrl,
+} from '../lib/utils'
+import { DEMO_DOCTORS } from '../data/demoDoctors'
 
-// DEMO_MODE: skip OpenAI Realtime — go straight to text-chat practice
-const DEMO_MODE = true
+// ── Web Speech API local types (no global Window augmentation to avoid conflicts) ──
+interface SpeechRecognitionInstance {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  start(): void
+  stop(): void
+  abort(): void
+  onresult: ((e: SpeechRecognitionResultEvent) => void) | null
+  onend: (() => void) | null
+  onerror: ((e: { error: string }) => void) | null
+}
+interface SpeechRecognitionResultEvent {
+  results: {
+    readonly length: number
+    [i: number]: { readonly isFinal: boolean; [j: number]: { readonly transcript: string } }
+  }
+}
+function getSpeechRecognition(): (new () => SpeechRecognitionInstance) | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const w = window as any
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition
+}
 
-type ConnectionStatus = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error'
+// ── Types ─────────────────────────────────────────────────────────────────────
+type Phase = 'idle' | 'starting' | 'live' | 'ending' | 'ended'
 
 interface TranscriptLine {
+  id: string
   role: 'rep' | 'doctor'
   content: string
-  id: string
 }
 
-// Waveform bar heights driven by sinusoidal animation
-const NUM_BARS = 18
-function useWaveform(active: boolean) {
-  const [heights, setHeights] = useState<number[]>(Array(NUM_BARS).fill(4))
-  const frameRef = useRef<number | null>(null)
-  const tickRef = useRef(0)
+type ReportData = PracticeReport & { overallScore: number }
 
-  useEffect(() => {
-    if (!active) {
-      setHeights(Array(NUM_BARS).fill(4))
-      return
-    }
-    const interval = setInterval(() => {
-      tickRef.current += 1
-      const t = tickRef.current
-      setHeights(
-        Array.from({ length: NUM_BARS }, (_, i) => {
-          const wave = Math.sin(t * 0.15 + i * 0.6) * 0.5 + 0.5
-          const wave2 = Math.sin(t * 0.09 + i * 0.4 + 2) * 0.3 + 0.5
-          return Math.max(4, Math.round((wave * 0.6 + wave2 * 0.4) * 22))
-        }),
-      )
-    }, 80)
-    return () => clearInterval(interval)
-  }, [active])
-
-  return heights
-}
-
-// SVG score ring — animates on mount
+// ── Score ring ────────────────────────────────────────────────────────────────
 function ScoreRing({ score, size = 100 }: { score: number; size?: number }) {
   const r = 44
-  const circumference = 2 * Math.PI * r // ≈ 276.5
-  const offset = circumference * (1 - score / 100)
+  const circumference = 2 * Math.PI * r
   const [dashOffset, setDashOffset] = useState(circumference)
 
   useEffect(() => {
-    const t = requestAnimationFrame(() => setDashOffset(offset))
+    const t = requestAnimationFrame(() => setDashOffset(circumference * (1 - score / 100)))
     return () => cancelAnimationFrame(t)
-  }, [offset])
+  }, [score, circumference])
 
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" style={{ transform: 'rotate(-90deg)' }}>
       <defs>
-        <linearGradient id="scoreGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+        <linearGradient id="sgRing" x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%" stopColor="#F0A500" />
-          <stop offset="100%" stopColor="#00B4D8" />
+          <stop offset="100%" stopColor="#58A6FF" />
         </linearGradient>
       </defs>
-      {/* Track */}
       <circle cx="50" cy="50" r={r} fill="none" stroke="#1C2333" strokeWidth="5" />
-      {/* Fill */}
       <circle
-        cx="50"
-        cy="50"
-        r={r}
-        fill="none"
-        stroke="url(#scoreGrad)"
-        strokeWidth="5"
-        strokeLinecap="round"
-        strokeDasharray={circumference}
-        strokeDashoffset={dashOffset}
+        cx="50" cy="50" r={r} fill="none"
+        stroke="url(#sgRing)" strokeWidth="5" strokeLinecap="round"
+        strokeDasharray={circumference} strokeDashoffset={dashOffset}
         style={{ transition: 'stroke-dashoffset 1s ease-out' }}
       />
     </svg>
   )
 }
 
+// ── Qual section ──────────────────────────────────────────────────────────────
+function QualSection({ icon, title, items, dotColor }: {
+  icon: ReactNode; title: string; items: string[]; dotColor: string
+}) {
+  return (
+    <div className="rounded-xl p-4" style={{ background: '#161B22', border: '1px solid #30363D' }}>
+      <div className="flex items-center gap-2 mb-3">
+        {icon}
+        <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#8B949E' }}>
+          {title}
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        {items.map((item, i) => (
+          <div key={i} className="flex items-start gap-2 text-xs leading-relaxed" style={{ color: '#C9D1D9' }}>
+            <div className="h-1.5 w-1.5 rounded-full mt-1.5 shrink-0" style={{ background: dotColor }} />
+            {item}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 export default function SimulatorPage() {
   const { id: doctorId } = useParams<{ id: string }>()
   const [searchParams] = useSearchParams()
@@ -101,477 +116,761 @@ export default function SimulatorPage() {
   const difficulty = (searchParams.get('difficulty') ?? 'Medium') as Difficulty
   const objectionFocus = (searchParams.get('objectionFocus') ?? 'Efficacy') as ObjectionType
 
-  const [status, setStatus] = useState<ConnectionStatus>('idle')
+  // ── State ──────────────────────────────────────────────────────────────────
+  const [phase, setPhase] = useState<Phase>('idle')
+  const [sessionId, setSessionId] = useState<string | null>(null)
   const [transcript, setTranscript] = useState<TranscriptLine[]>([])
   const [elapsed, setElapsed] = useState(0)
-  const [isMuted, setIsMuted] = useState(false)
-  const [sessionId, setSessionId] = useState<string | null>(null)
-  const [textInput, setTextInput] = useState('')
+  const [micMuted, setMicMuted] = useState(false)
+  const [interimText, setInterimText] = useState('')
+  const [aiThinking, setAiThinking] = useState(false)
+  const [report, setReport] = useState<ReportData | null>(null)
+  const [reportLoading, setReportLoading] = useState(false)
   const [micError, setMicError] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [textMode, setTextMode] = useState(false)
-  const [chatLoading, setChatLoading] = useState(false)
+  const [textInput, setTextInput] = useState('')
 
-  const pcRef = useRef<RTCPeerConnection | null>(null)
-  const dcRef = useRef<RTCDataChannel | null>(null)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const streamRef = useRef<MediaStream | null>(null)
+  // ── Refs (stable in async handlers) ────────────────────────────────────────
+  const phaseRef = useRef<Phase>('idle')
+  const sessionIdRef = useRef<string | null>(null)
+  const micMutedRef = useRef(false)
+  const elapsedRef = useRef(0)
+  const processingRef = useRef(false)
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
   const timerRef = useRef<number | null>(null)
-  const transcriptRef = useRef<HTMLDivElement | null>(null)
-  const startTimeRef = useRef<number>(0)
+  const conversationHistoryRef = useRef<Array<{ role: 'rep' | 'doctor'; content: string }>>([])
+  const transcriptEndRef = useRef<HTMLDivElement | null>(null)
 
-  const isActive = status === 'connected'
-  const isConnecting = status === 'connecting'
-  const waveHeights = useWaveform(isActive && !textMode)
+  // Sync state → refs
+  useEffect(() => { phaseRef.current = phase }, [phase])
+  useEffect(() => { sessionIdRef.current = sessionId }, [sessionId])
+  useEffect(() => { micMutedRef.current = micMuted }, [micMuted])
+  useEffect(() => { elapsedRef.current = elapsed }, [elapsed])
 
+  // Auto-scroll
+  useEffect(() => {
+    transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [transcript, interimText])
+
+  // ── Doctor fetch ───────────────────────────────────────────────────────────
   const { data: doctorData } = useQuery({
     queryKey: ['doctor', doctorId],
     queryFn: () =>
       api.get<{ doctor: DoctorProfile }>(`/api/doctors/${doctorId}`).then((r) => r.data),
     enabled: !!doctorId,
+    retry: false,
   })
-  const doctor = doctorData?.doctor
+  const doctor = doctorData?.doctor ?? DEMO_DOCTORS.find((d) => d.id === doctorId)
+  const photoUrl = doctorPhotoUrl(doctorId ?? '', 80, 80)
 
-  useEffect(() => {
-    if (transcriptRef.current) {
-      transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight
-    }
-  }, [transcript])
+  // ── Handle rep speech → AI reply ───────────────────────────────────────────
+  const handleRepSpeech = useCallback(async (text: string) => {
+    if (processingRef.current) return
+    processingRef.current = true
 
-  useEffect(() => {
-    if (status === 'connected') {
-      startTimeRef.current = Date.now() - elapsed * 1000
-      timerRef.current = window.setInterval(() => {
-        setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000))
-      }, 1000)
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current)
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
-    }
-  }, [status])
+    recognitionRef.current?.stop()
+    setInterimText('')
 
-  const appendTranscript = (role: 'rep' | 'doctor', content: string) => {
-    if (!content.trim()) return
-    setTranscript((prev) => [...prev, { role, content, id: Math.random().toString() }])
-    if (sessionId) {
-      api.post(`/api/practice/session/${sessionId}/turn`, { role, content }).catch(() => {})
-    }
-  }
+    setTranscript((prev) => [
+      ...prev,
+      { id: Math.random().toString(), role: 'rep', content: text },
+    ])
 
-  const startSession = useCallback(async () => {
-    setError(null)
-    setMicError(null)
-    setStatus('connecting')
+    const historySnapshot = [...conversationHistoryRef.current]
+    setAiThinking(true)
 
-    let dbSessionId: string
     try {
-      const session = await api
-        .post<{ session: { id: string } }>('/api/practice/session', {
-          doctorId,
-          userId: user!.id,
-          difficulty,
-          objectionFocus,
-        })
-        .then((r) => r.data.session)
-      dbSessionId = session.id
-      setSessionId(session.id)
+      const { data } = await api.post<{ doctorReply: string; success: boolean }>(
+        `/api/practice/session/${sessionIdRef.current}/chat-reply`,
+        { repMessage: text, history: historySnapshot },
+      )
+      const aiText = data.doctorReply
+      setTranscript((prev) => [
+        ...prev,
+        { id: Math.random().toString(), role: 'doctor', content: aiText },
+      ])
+      conversationHistoryRef.current = [
+        ...historySnapshot,
+        { role: 'rep', content: text },
+        { role: 'doctor', content: aiText },
+      ]
     } catch {
-      setStatus('error')
-      setError('Failed to create practice session. Please try again.')
-      return
+      setTranscript((prev) => [
+        ...prev,
+        { id: Math.random().toString(), role: 'doctor', content: 'Could you rephrase that?' },
+      ])
+    } finally {
+      setAiThinking(false)
+      processingRef.current = false
+      if (phaseRef.current === 'live' && !micMutedRef.current && !textMode) {
+        setTimeout(() => {
+          try { recognitionRef.current?.start() } catch {}
+        }, 300)
+      }
+    }
+  }, [textMode])
+
+  // ── Init recognition ───────────────────────────────────────────────────────
+  const initRecognition = useCallback((): SpeechRecognitionInstance | null => {
+    const SR = getSpeechRecognition()
+    if (!SR) return null
+
+    const r = new SR()
+    r.continuous = true
+    r.interimResults = true
+    r.lang = 'en-IN'
+
+    r.onresult = (event) => {
+      const results = event.results
+      const last = results[results.length - 1]
+      const text = last[0].transcript.trim()
+      if (last.isFinal) {
+        setInterimText('')
+        if (text.split(' ').length >= 2 && !processingRef.current) {
+          handleRepSpeech(text)
+        }
+      } else {
+        setInterimText(text)
+      }
     }
 
-    if (DEMO_MODE) {
-      // Skip WebRTC entirely — go straight to text-chat
-      setTextMode(true)
-      setStatus('connected')
-      return
+    r.onend = () => {
+      setInterimText('')
+      if (phaseRef.current === 'live' && !micMutedRef.current && !processingRef.current) {
+        setTimeout(() => {
+          if (phaseRef.current === 'live' && !micMutedRef.current) {
+            try { recognitionRef.current?.start() } catch {}
+          }
+        }, 300)
+      }
     }
+
+    r.onerror = (e) => {
+      if (e.error === 'not-allowed') {
+        setMicError('Microphone access denied.')
+        setTextMode(true)
+      }
+    }
+
+    return r
+  }, [handleRepSpeech])
+
+  // ── Start session ──────────────────────────────────────────────────────────
+  const startSession = useCallback(async () => {
+    if (phaseRef.current !== 'idle') return
+    setPhase('starting')
 
     try {
-      const { data: rtData } = await api.post<{
-        sessionId: string
-        clientSecret: string
-      }>('/api/realtime/session', { doctorId, difficulty, objectionFocus })
+      // 1. Create DB session
+      const { data: sData } = await api.post<{ session: { id: string }; success: boolean }>(
+        '/api/practice/session',
+        { doctorId, userId: user?.id, difficulty, objectionFocus },
+      )
+      const sid = sData.session.id
+      setSessionId(sid)
+      sessionIdRef.current = sid
 
-      let stream: MediaStream
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-        streamRef.current = stream
-      } catch {
-        setMicError('Microphone access denied. You can still use text input below.')
-        stream = new MediaStream()
-      }
+      // 2. Get AI opening objection
+      const { data: oData } = await api.post<{ doctorReply: string; success: boolean }>(
+        `/api/practice/session/${sid}/chat-reply`,
+        { repMessage: '[SESSION_INIT]', history: [] },
+      )
+      const opener = oData.doctorReply
+      setTranscript([{ id: Math.random().toString(), role: 'doctor', content: opener }])
+      // Include synthetic init pair so subsequent turn indices map correctly
+      conversationHistoryRef.current = [
+        { role: 'rep', content: '[SESSION_INIT]' },
+        { role: 'doctor', content: opener },
+      ]
 
-      const pc = new RTCPeerConnection()
-      pcRef.current = pc
-
-      const audioEl = document.createElement('audio')
-      audioEl.autoplay = true
-      audioRef.current = audioEl
-      pc.ontrack = (e) => { audioEl.srcObject = e.streams[0] }
-
-      stream.getTracks().forEach((t) => pc.addTrack(t, stream))
-
-      const dc = pc.createDataChannel('oai-events')
-      dcRef.current = dc
-
-      dc.onmessage = (e) => {
-        try {
-          const event = JSON.parse(e.data)
-          if (event.type === 'conversation.item.input_audio_transcription.completed') {
-            appendTranscript('rep', event.transcript ?? '')
-          }
-          if (event.type === 'response.audio_transcript.done') {
-            appendTranscript('doctor', event.transcript ?? '')
-          }
-        } catch {}
-      }
-
-      dc.onopen = () => setStatus('connected')
-      dc.onclose = () => { if (status !== 'idle') setStatus('disconnected') }
-      pc.onconnectionstatechange = () => {
-        if (pc.connectionState === 'failed') {
-          setStatus('error')
-          setError('WebRTC connection failed. Check your network.')
+      // 3. Init voice recognition
+      const SR = getSpeechRecognition()
+      if (!SR) {
+        setTextMode(true)
+      } else {
+        const r = initRecognition()
+        recognitionRef.current = r
+        if (r) {
+          try { r.start() } catch { setTextMode(true) }
         }
       }
 
-      const offer = await pc.createOffer()
-      await pc.setLocalDescription(offer)
+      // 4. Start timer
+      const t0 = Date.now()
+      timerRef.current = window.setInterval(() => {
+        setElapsed(Math.floor((Date.now() - t0) / 1000))
+      }, 1000)
 
-      const sdpResponse = await fetch(
-        'https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview',
-        {
-          method: 'POST',
-          body: offer.sdp,
-          headers: {
-            Authorization: `Bearer ${rtData.clientSecret}`,
-            'Content-Type': 'application/sdp',
-          },
-        },
-      )
-
-      if (!sdpResponse.ok) throw new Error('Failed to connect to OpenAI Realtime')
-      const sdpAnswer = await sdpResponse.text()
-      await pc.setRemoteDescription({ type: 'answer', sdp: sdpAnswer })
-    } catch {
-      cleanup()
-      setTextMode(true)
-      setStatus('connected')
+      setPhase('live')
+    } catch (err) {
+      console.error('Session start failed:', err)
+      setPhase('idle')
     }
-  }, [doctorId, difficulty, objectionFocus, user])
+  }, [doctorId, user, difficulty, objectionFocus, initRecognition])
 
-  const cleanup = () => {
-    streamRef.current?.getTracks().forEach((t) => t.stop())
-    pcRef.current?.close()
-    dcRef.current?.close()
-    if (audioRef.current) audioRef.current.srcObject = null
-    pcRef.current = null
-    dcRef.current = null
-    streamRef.current = null
-  }
-
+  // ── End session ────────────────────────────────────────────────────────────
   const endSession = useCallback(async () => {
-    cleanup()
-    setStatus('idle')
-    if (sessionId) {
+    if (phaseRef.current !== 'live') return
+    setPhase('ending')
+
+    recognitionRef.current?.abort()
+    recognitionRef.current = null
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+
+    const sid = sessionIdRef.current
+    const dur = elapsedRef.current
+
+    if (sid) {
+      try { await api.post(`/api/practice/session/${sid}/complete`, { durationSeconds: dur }) } catch {}
+
+      setReportLoading(true)
       try {
-        await api.post(`/api/practice/session/${sessionId}/complete`, { durationSeconds: elapsed })
-        navigate(`/doctors/${doctorId}/practice/${sessionId}/report`)
-      } catch {
-        navigate(`/doctors/${doctorId}?tab=practice`)
-      }
-    }
-  }, [sessionId, elapsed, doctorId, navigate])
-
-  const toggleMute = () => {
-    streamRef.current?.getAudioTracks().forEach((t) => { t.enabled = isMuted })
-    setIsMuted((m) => !m)
-  }
-
-  const sendTextMessage = async () => {
-    if (!textInput.trim()) return
-    const msg = textInput.trim()
-    setTextInput('')
-
-    if (textMode) {
-      appendTranscript('rep', msg)
-      setChatLoading(true)
-      try {
-        const { data } = await api.post<{ doctorReply: string }>(
-          `/api/practice/session/${sessionId}/chat-reply`,
-          { repMessage: msg, history: transcript.map((t) => ({ role: t.role, content: t.content })) },
+        const { data } = await api.post<{ report: ReportData; success: boolean }>(
+          `/api/practice/session/${sid}/report`,
         )
-        appendTranscript('doctor', data.doctorReply)
+        const rpt = data.report
+        setReport({
+          ...rpt,
+          overallScore: rpt.overallScore ?? Math.round(
+            (rpt.objectionHandlingScore + rpt.clarityScore + rpt.confidenceScore + rpt.complianceScore) / 4,
+          ),
+        })
       } catch {
-        appendTranscript('doctor', 'Sorry, I did not quite catch that. Could you repeat?')
+        // Local heuristic fallback
+        const reps = conversationHistoryRef.current.filter(
+          (t) => t.role === 'rep' && t.content !== '[SESSION_INIT]',
+        ).length
+        const base = difficulty === 'Hard' ? 60 : difficulty === 'Medium' ? 67 : 74
+        const bonus = Math.min(20, reps * 4)
+        const oh = Math.min(94, base + bonus)
+        const cl = Math.min(94, base + 5 + bonus)
+        const co = Math.min(94, base - 2 + bonus)
+        const cm = Math.min(95, 78 + Math.floor(bonus / 2))
+        const overall = Math.round((oh + cl + co + cm) / 4)
+        setReport({
+          id: 'local',
+          sessionId: sid,
+          createdAt: new Date().toISOString(),
+          overallScore: overall,
+          objectionHandlingScore: oh,
+          clarityScore: cl,
+          confidenceScore: co,
+          complianceScore: cm,
+          summary: `${reps} exchange${reps !== 1 ? 's' : ''} with ${doctor?.fullName ?? 'the doctor'}. ${reps >= 4 ? 'Good engagement — objections were challenged effectively.' : 'Short session — aim for 4+ exchanges to build fluency.'}`,
+          strengths: ['Maintained professional tone throughout', 'Responded directly to doctor objections'],
+          weakMoments: ['Could cite more specific clinical trial data by name', 'Closing lacked a confirmed next step'],
+          missedOpportunities: ['Patient Support Programme not introduced', 'Head-to-head comparative data not referenced'],
+          improvements: ['Prepare 2-3 named trial data points', 'Ask about patient demographics earlier', 'Close each exchange with a clear summary'],
+          nextPractice: ['Try Hard difficulty with the same doctor', 'Focus on cost + competitor combined objection', 'Practice full call arc from greeting to close'],
+        })
       } finally {
-        setChatLoading(false)
+        setReportLoading(false)
       }
-    } else {
-      if (!dcRef.current || dcRef.current.readyState !== 'open') return
-      appendTranscript('rep', msg)
-      dcRef.current.send(
-        JSON.stringify({
-          type: 'conversation.item.create',
-          item: { type: 'message', role: 'user', content: [{ type: 'input_text', text: msg }] },
-        }),
-      )
-      dcRef.current.send(JSON.stringify({ type: 'response.create' }))
     }
-  }
 
-  useEffect(() => { return () => cleanup() }, [])
+    setPhase('ended')
+  }, [difficulty, doctor])
+
+  // ── Toggle mic ─────────────────────────────────────────────────────────────
+  const toggleMic = useCallback(() => {
+    const muted = !micMutedRef.current
+    setMicMuted(muted)
+    micMutedRef.current = muted
+    if (muted) recognitionRef.current?.stop()
+    else { try { recognitionRef.current?.start() } catch {} }
+  }, [])
+
+  // ── Reset for "Practice Again" ─────────────────────────────────────────────
+  const practiceAgain = useCallback(() => {
+    recognitionRef.current?.abort()
+    if (timerRef.current) clearInterval(timerRef.current)
+    recognitionRef.current = null
+    timerRef.current = null
+    conversationHistoryRef.current = []
+    processingRef.current = false
+    phaseRef.current = 'idle'
+    setPhase('idle')
+    setSessionId(null)
+    setTranscript([])
+    setElapsed(0)
+    setMicMuted(false)
+    setInterimText('')
+    setAiThinking(false)
+    setReport(null)
+    setReportLoading(false)
+    setTextInput('')
+    setMicError(null)
+  }, [])
+
+  // ── Keyboard shortcuts ─────────────────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      if (e.code === 'Space') {
+        e.preventDefault()
+        if (phaseRef.current === 'idle') startSession()
+        else if (phaseRef.current === 'live') endSession()
+      }
+      if (e.code === 'KeyC' && phaseRef.current === 'live') toggleMic()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [startSession, endSession, toggleMic])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.abort()
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
+  }, [])
 
   if (!doctor) {
     return (
       <div className="flex items-center justify-center min-h-screen" style={{ background: '#0D1117' }}>
-        <div style={{ color: '#8B949E' }}>Loading…</div>
+        <div className="text-sm" style={{ color: '#8B949E' }}>Loading…</div>
       </div>
     )
   }
 
-  // Mock session score for UI display (from actual report if available, else 87 demo)
-  const displayScore = 87
-  const photoUrl = doctorPhotoUrl(doctor.id, 120, 120)
+  const isLive = phase === 'live'
+  const isIdle = phase === 'idle'
+  const isEnded = phase === 'ended'
+  const isTransitioning = phase === 'starting' || phase === 'ending'
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#0D1117' }}>
-      {/* Topbar */}
+
+      {/* ── Topbar ────────────────────────────────────────────────────────── */}
       <div
         className="flex items-center justify-between px-6 py-3 shrink-0"
         style={{ background: '#161B22', borderBottom: '1px solid #30363D' }}
       >
         <button
           onClick={() => {
-            if (isActive && !window.confirm('End session and return to doctor workspace?')) return
-            cleanup()
+            if (isLive && !window.confirm('End session and go back?')) return
+            recognitionRef.current?.abort()
+            if (timerRef.current) clearInterval(timerRef.current)
             navigate(`/doctors/${doctorId}?tab=practice`)
           }}
           className="flex items-center gap-1.5 text-sm transition-colors duration-150"
           style={{ color: '#8B949E' }}
-          onMouseEnter={(e) => { ;(e.currentTarget as HTMLElement).style.color = '#F0F6FC' }}
-          onMouseLeave={(e) => { ;(e.currentTarget as HTMLElement).style.color = '#8B949E' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#F0F6FC' }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#8B949E' }}
         >
           <ArrowLeft className="h-4 w-4" />
-          Back to workspace
+          Back
         </button>
 
         <div className="flex items-center gap-3">
           <div
-            className="flex items-center gap-1.5 text-xs font-medium"
+            className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-lg"
             style={{
-              color: isActive
-                ? textMode ? '#F0A500' : '#3FB950'
-                : isConnecting ? '#D29922' : '#484F58',
+              background: isLive ? '#12201A' : isEnded ? '#1F1635' : '#1C2333',
+              color: isLive ? '#3FB950' : isEnded ? '#BC8CFF' : '#484F58',
+              border: `1px solid ${isLive ? '#1F5231' : isEnded ? '#3D2C78' : '#30363D'}`,
             }}
           >
-            {isActive ? (
-              textMode
-                ? <MessageSquare className="h-3.5 w-3.5" />
-                : <Wifi className="h-3.5 w-3.5" />
-            ) : isConnecting ? (
-              <div
-                className="h-3.5 w-3.5 rounded-full border-2 border-t-transparent animate-spin"
-                style={{ borderColor: '#D29922', borderTopColor: 'transparent' }}
-              />
-            ) : <WifiOff className="h-3.5 w-3.5" />}
-            {isActive
-              ? textMode ? 'Text chat' : 'Voice connected'
-              : isConnecting ? 'Connecting…' : 'Not connected'}
+            {isLive && (
+              <div className="h-2 w-2 rounded-full animate-pulse" style={{ background: '#3FB950' }} />
+            )}
+            {isLive ? 'LIVE' : isEnded ? 'SESSION COMPLETE' : isTransitioning ? 'STARTING…' : 'READY'}
           </div>
 
-          {isActive && (
+          {(isLive || isEnded) && (
             <div
-              className="flex items-center gap-1.5 text-xs font-mono font-semibold px-2.5 py-1 rounded-lg"
+              className="text-xs font-mono font-semibold px-2.5 py-1 rounded-lg"
               style={{ background: '#261900', color: '#F0A500', border: '1px solid #4D3200' }}
             >
-              <Clock className="h-3 w-3" />
               {formatTime(elapsed)}
+            </div>
+          )}
+
+          {isLive && !textMode && (
+            <div
+              className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg"
+              style={{
+                background: micMuted ? '#1F0D0D' : '#0D2137',
+                color: micMuted ? '#F85149' : '#58A6FF',
+                border: `1px solid ${micMuted ? '#5C1C1A' : '#1F4068'}`,
+              }}
+            >
+              {micMuted ? <MicOff className="h-3 w-3" /> : <Mic className="h-3 w-3" />}
+              {micMuted ? 'MUTED' : 'MIC ON'}
             </div>
           )}
         </div>
       </div>
 
+      {/* ── Body ──────────────────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
-        {/* ── Left: transcript ───────────────────────────────── */}
-        <div className="flex-1 flex flex-col p-6 min-h-0">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-lg font-semibold" style={{ color: '#F0F6FC' }}>
-              Voice Practice Session
-            </h1>
-            <div className="flex items-center gap-2">
-              <span
-                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${difficultyColors[difficulty]}`}
-              >
-                {difficulty}
-              </span>
-              <Badge variant="default">{objectionLabels[objectionFocus]}</Badge>
-            </div>
-          </div>
 
-          {/* Error banners */}
-          {error && (
-            <div
-              className="mb-4 flex items-start gap-2 rounded-xl p-4 text-sm"
-              style={{ background: '#1F0D0D', border: '1px solid #5C1C1A', color: '#F85149' }}
-            >
-              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          )}
-          {textMode && isActive && (
-            <div
-              className="mb-4 flex items-start gap-2 rounded-xl p-4 text-sm"
-              style={{ background: '#261900', border: '1px solid #4D3200', color: '#D29922' }}
-            >
-              <MessageSquare className="h-4 w-4 shrink-0 mt-0.5" />
-              <span>
-                <strong>Text chat mode</strong> — Voice API unavailable. Type your pitch below.
-              </span>
-            </div>
-          )}
-          {micError && (
-            <div
-              className="mb-4 flex items-start gap-2 rounded-xl p-4 text-sm"
-              style={{ background: '#261900', border: '1px solid #4D3200', color: '#D29922' }}
-            >
-              <MicOff className="h-4 w-4 shrink-0 mt-0.5" />
-              <span>{micError}</span>
-            </div>
-          )}
+        {/* ── Left: transcript or report ────────────────────────────────── */}
+        <div className="flex-1 flex flex-col p-6 min-h-0 gap-4">
 
-          {/* Transcript panel */}
-          <div
-            ref={transcriptRef}
-            className="flex-1 overflow-y-auto rounded-xl p-4 space-y-3 scrollbar-thin mb-4 min-h-[300px]"
-            style={{ background: '#161B22', border: '1px solid #30363D' }}
-          >
-            {transcript.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full py-12 text-center">
-                <div
-                  className="h-12 w-12 rounded-2xl flex items-center justify-center mb-3"
-                  style={{ background: '#1C2333', border: '1px solid #30363D' }}
-                >
-                  <Mic className="h-5 w-5" style={{ color: '#F0A500' }} />
+          {/* ── Transcript (idle / starting / live) ─── */}
+          {!isEnded && (
+            <>
+              <div className="flex items-center justify-between">
+                <h1 className="text-base font-semibold" style={{ color: '#F0F6FC' }}>
+                  {isLive ? 'Live Practice Session' : 'Objection Simulator'}
+                </h1>
+                <div className="flex items-center gap-2">
+                  <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${difficultyColors[difficulty]}`}>
+                    {difficulty}
+                  </span>
+                  <Badge variant="default">{objectionLabels[objectionFocus]}</Badge>
                 </div>
-                <p className="text-sm font-medium" style={{ color: '#8B949E' }}>
-                  Ready to practice
-                </p>
-                <p className="text-xs mt-1 max-w-xs" style={{ color: '#484F58' }}>
-                  {isActive
-                    ? 'Start speaking — the AI doctor is listening'
-                    : 'Click "Start Session" to begin voice roleplay'}
-                </p>
               </div>
-            ) : (
-              transcript.map((line) => (
-                <div
-                  key={line.id}
-                  className={`flex ${line.role === 'rep' ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div
-                    className={`flex items-start gap-2 max-w-[85%] ${
-                      line.role === 'rep' ? 'flex-row-reverse' : ''
-                    }`}
-                  >
+
+              {/* Transcript panel */}
+              <div
+                className="flex-1 overflow-y-auto rounded-xl p-4 space-y-3 min-h-[220px]"
+                style={{ background: '#161B22', border: '1px solid #30363D' }}
+              >
+                {transcript.length === 0 && !isTransitioning ? (
+                  <div className="flex flex-col items-center justify-center h-full py-16 text-center">
                     <div
-                      className="h-6 w-6 rounded-full flex items-center justify-center shrink-0 mt-0.5"
-                      style={{
-                        background: line.role === 'rep' ? '#F0A500' : '#1C2333',
-                        border: line.role === 'rep' ? 'none' : '1px solid #30363D',
-                      }}
+                      className="h-14 w-14 rounded-2xl flex items-center justify-center mb-3"
+                      style={{ background: '#1C2333', border: '1px solid #30363D' }}
                     >
-                      {line.role === 'rep' ? (
-                        <User className="h-3 w-3" style={{ color: '#0D1117' }} />
-                      ) : (
-                        <Stethoscope className="h-3 w-3" style={{ color: '#8B949E' }} />
-                      )}
+                      <Mic className="h-6 w-6" style={{ color: '#F0A500' }} />
                     </div>
+                    <p className="text-sm font-medium mb-1" style={{ color: '#C9D1D9' }}>
+                      AI doctor speaks first
+                    </p>
+                    <p className="text-xs max-w-xs" style={{ color: '#8B949E' }}>
+                      Press{' '}
+                      <kbd
+                        className="mx-1 px-1.5 py-0.5 rounded font-mono text-xs"
+                        style={{ background: '#21262D', border: '1px solid #30363D', color: '#F0F6FC' }}
+                      >
+                        Space
+                      </kbd>
+                      to start — the AI will open with a realistic objection
+                    </p>
+                  </div>
+                ) : isTransitioning && transcript.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full py-16 gap-3">
                     <div
-                      className={
-                        line.role === 'rep' ? 'transcript-bubble-rep' : 'transcript-bubble-doctor'
+                      className="h-6 w-6 rounded-full border-2 animate-spin"
+                      style={{ borderColor: '#F0A500', borderTopColor: 'transparent' }}
+                    />
+                    <p className="text-sm" style={{ color: '#8B949E' }}>Connecting AI doctor…</p>
+                  </div>
+                ) : (
+                  <>
+                    {transcript.map((line) => (
+                      <div key={line.id} className={`flex ${line.role === 'rep' ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`flex items-start gap-2 max-w-[85%] ${line.role === 'rep' ? 'flex-row-reverse' : ''}`}>
+                          <div
+                            className="h-6 w-6 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+                            style={{
+                              background: line.role === 'rep' ? '#F0A500' : '#1C2333',
+                              border: line.role === 'rep' ? 'none' : '1px solid #30363D',
+                            }}
+                          >
+                            {line.role === 'rep'
+                              ? <User className="h-3 w-3" style={{ color: '#0D1117' }} />
+                              : <Stethoscope className="h-3 w-3" style={{ color: '#8B949E' }} />}
+                          </div>
+                          <div>
+                            <div className="text-[10px] mb-0.5" style={{ color: '#484F58' }}>
+                              {line.role === 'doctor' ? doctor.fullName : 'You'}
+                            </div>
+                            <div
+                              className="text-sm rounded-xl px-3 py-2 leading-relaxed"
+                              style={{
+                                background: line.role === 'rep' ? '#261900' : '#1C2333',
+                                color: line.role === 'rep' ? '#F0A500' : '#C9D1D9',
+                                border: `1px solid ${line.role === 'rep' ? '#4D3200' : '#30363D'}`,
+                              }}
+                            >
+                              {line.content}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* AI thinking indicator */}
+                    {aiThinking && (
+                      <div className="flex justify-start">
+                        <div className="flex items-center gap-2 max-w-[85%]">
+                          <div
+                            className="h-6 w-6 rounded-full flex items-center justify-center shrink-0"
+                            style={{ background: '#1C2333', border: '1px solid #30363D' }}
+                          >
+                            <Stethoscope className="h-3 w-3" style={{ color: '#8B949E' }} />
+                          </div>
+                          <div
+                            className="text-sm rounded-xl px-3 py-2"
+                            style={{ background: '#1C2333', border: '1px solid #30363D', color: '#484F58' }}
+                          >
+                            <span className="inline-flex gap-1">
+                              {[0, 150, 300].map((d) => (
+                                <span
+                                  key={d}
+                                  className="animate-bounce"
+                                  style={{ animationDelay: `${d}ms` }}
+                                >·</span>
+                              ))}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Interim text */}
+                    {interimText && (
+                      <div className="flex justify-end">
+                        <div
+                          className="text-sm rounded-xl px-3 py-2 max-w-[85%]"
+                          style={{
+                            background: '#1A1206',
+                            border: '1px dashed #4D3200',
+                            color: '#8B6A1A',
+                            fontStyle: 'italic',
+                          }}
+                        >
+                          {interimText}…
+                        </div>
+                      </div>
+                    )}
+                    <div ref={transcriptEndRef} />
+                  </>
+                )}
+              </div>
+
+              {/* Text fallback input */}
+              {(textMode || micError) && isLive && (
+                <div className="flex gap-2">
+                  <Textarea
+                    value={textInput}
+                    onChange={(e) => setTextInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        if (!aiThinking && textInput.trim()) {
+                          const m = textInput.trim()
+                          setTextInput('')
+                          handleRepSpeech(m)
+                        }
                       }
+                    }}
+                    placeholder="Type your response (Enter to send)…"
+                    rows={2}
+                    className="flex-1"
+                    disabled={aiThinking}
+                  />
+                  <Button
+                    onClick={() => {
+                      if (!aiThinking && textInput.trim()) {
+                        const m = textInput.trim()
+                        setTextInput('')
+                        handleRepSpeech(m)
+                      }
+                    }}
+                    disabled={!textInput.trim() || aiThinking}
+                    className="self-end"
+                  >
+                    Send
+                  </Button>
+                </div>
+              )}
+
+              {/* Controls */}
+              <div className="flex items-center justify-center gap-3">
+                {isIdle && (
+                  <Button size="lg" onClick={startSession} className="px-8 gap-2">
+                    <Mic className="h-5 w-5" />
+                    Start Session
+                    <kbd
+                      className="ml-1 text-xs opacity-60 font-mono px-1 py-0.5 rounded"
+                      style={{ background: 'rgba(0,0,0,.3)' }}
                     >
-                      {line.content}
+                      Space
+                    </kbd>
+                  </Button>
+                )}
+                {isTransitioning && (
+                  <Button size="lg" disabled className="px-8 gap-2">
+                    <div
+                      className="h-4 w-4 rounded-full border-2 animate-spin"
+                      style={{ borderColor: 'currentColor', borderTopColor: 'transparent' }}
+                    />
+                    {phase === 'ending' ? 'Ending…' : 'Starting…'}
+                  </Button>
+                )}
+                {isLive && (
+                  <>
+                    {!textMode && (
+                      <button
+                        onClick={toggleMic}
+                        title={micMuted ? 'Unmute [C]' : 'Mute [C]'}
+                        className="h-11 w-11 rounded-lg flex items-center justify-center transition-all duration-150"
+                        style={{
+                          background: micMuted ? '#1F0D0D' : '#1C2333',
+                          border: `1px solid ${micMuted ? '#5C1C1A' : '#30363D'}`,
+                          color: micMuted ? '#F85149' : '#8B949E',
+                        }}
+                      >
+                        {micMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                      </button>
+                    )}
+                    <Button variant="destructive" size="lg" onClick={endSession} className="px-8 gap-2">
+                      <Square className="h-4 w-4" />
+                      End Session
+                      <kbd
+                        className="ml-1 text-xs opacity-60 font-mono px-1 py-0.5 rounded"
+                        style={{ background: 'rgba(0,0,0,.3)' }}
+                      >
+                        Space
+                      </kbd>
+                    </Button>
+                  </>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* ── Report (ended) ────────────────────────────────────────────── */}
+          {isEnded && (
+            <div className="flex-1 overflow-y-auto space-y-5">
+              <div className="flex items-center justify-between">
+                <h1 className="text-base font-semibold" style={{ color: '#F0F6FC' }}>
+                  Practice Report
+                </h1>
+                <div className="flex items-center gap-2">
+                  <Button variant="secondary" size="sm" onClick={practiceAgain}>
+                    Practice Again
+                  </Button>
+                  <Button size="sm" onClick={() => navigate('/dashboard')}>
+                    <BarChart2 className="h-4 w-4 mr-1" />
+                    Dashboard
+                  </Button>
+                </div>
+              </div>
+
+              {reportLoading ? (
+                <div className="flex flex-col items-center py-16 gap-3">
+                  <div
+                    className="h-8 w-8 rounded-full border-2 animate-spin"
+                    style={{ borderColor: '#F0A500', borderTopColor: 'transparent' }}
+                  />
+                  <p className="text-sm" style={{ color: '#8B949E' }}>Generating coaching report…</p>
+                </div>
+              ) : report ? (
+                <>
+                  {/* Overall score + sub-scores */}
+                  <div
+                    className="rounded-xl p-5 flex flex-col sm:flex-row items-center gap-6"
+                    style={{ background: '#161B22', border: '1px solid #30363D' }}
+                  >
+                    <div className="flex flex-col items-center shrink-0">
+                      <div className="relative flex items-center justify-center">
+                        <ScoreRing score={report.overallScore} size={110} />
+                        <div className="absolute flex flex-col items-center">
+                          <span style={{ color: '#F0F6FC', fontSize: '1.75rem', fontWeight: 700, lineHeight: 1 }}>
+                            {report.overallScore}
+                          </span>
+                          <span style={{ color: '#8B949E', fontSize: '0.65rem' }}>/100</span>
+                        </div>
+                      </div>
+                      <div className="text-xs mt-2 font-medium" style={{ color: '#8B949E' }}>
+                        Overall Score
+                      </div>
+                    </div>
+                    <div className="flex-1 grid grid-cols-2 gap-3 w-full">
+                      {[
+                        { label: 'Objection Handling', score: report.objectionHandlingScore, color: '#F0A500' },
+                        { label: 'Clarity', score: report.clarityScore, color: '#58A6FF' },
+                        { label: 'Confidence', score: report.confidenceScore, color: '#BC8CFF' },
+                        { label: 'Compliance', score: report.complianceScore, color: '#3FB950' },
+                      ].map(({ label, score, color }) => (
+                        <div
+                          key={label}
+                          className="rounded-lg p-3"
+                          style={{ background: '#1C2333', border: '1px solid #30363D' }}
+                        >
+                          <div className="text-xs mb-2" style={{ color: '#8B949E' }}>{label}</div>
+                          <div className="flex items-end gap-1">
+                            <span style={{ color, fontSize: '1.25rem', fontWeight: 700, lineHeight: 1 }}>
+                              {score}
+                            </span>
+                            <span className="text-xs mb-0.5" style={{ color: '#484F58' }}>/100</span>
+                          </div>
+                          <div className="mt-2 h-1 rounded-full" style={{ background: '#161B22' }}>
+                            <div
+                              className="h-full rounded-full"
+                              style={{ width: `${score}%`, background: color, transition: 'width 0.7s ease-out' }}
+                            />
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                </div>
-              ))
-            )}
-          </div>
 
-          {/* Text input */}
-          {(textMode ? isActive : isActive || micError) && (
-            <div className="flex gap-2">
-              <Textarea
-                value={textInput}
-                onChange={(e) => setTextInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    sendTextMessage()
-                  }
-                }}
-                placeholder={
-                  textMode
-                    ? 'Type your message to the doctor (Enter to send)…'
-                    : 'Type your response (Enter to send)…'
-                }
-                rows={2}
-                className="flex-1"
-                disabled={chatLoading}
-              />
-              <Button
-                onClick={sendTextMessage}
-                disabled={!textInput.trim() || chatLoading}
-                loading={chatLoading}
-                className="self-end"
-              >
-                Send
-              </Button>
+                  {/* Summary */}
+                  <div className="rounded-xl p-4" style={{ background: '#161B22', border: '1px solid #30363D' }}>
+                    <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#8B949E' }}>
+                      Summary
+                    </div>
+                    <p className="text-sm leading-relaxed" style={{ color: '#C9D1D9' }}>{report.summary}</p>
+                  </div>
+
+                  {/* Qualitative cards */}
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <QualSection
+                      icon={<CheckCircle className="h-4 w-4" style={{ color: '#3FB950' }} />}
+                      title="Strengths"
+                      items={report.strengths}
+                      dotColor="#3FB950"
+                    />
+                    <QualSection
+                      icon={<XCircle className="h-4 w-4" style={{ color: '#F85149' }} />}
+                      title="Needs Work"
+                      items={report.weakMoments}
+                      dotColor="#F85149"
+                    />
+                    <QualSection
+                      icon={<AlertTriangle className="h-4 w-4" style={{ color: '#D29922' }} />}
+                      title="Missed Opportunities"
+                      items={report.missedOpportunities}
+                      dotColor="#D29922"
+                    />
+                    <QualSection
+                      icon={<ChevronRight className="h-4 w-4" style={{ color: '#58A6FF' }} />}
+                      title="Recommendations"
+                      items={report.improvements}
+                      dotColor="#58A6FF"
+                    />
+                  </div>
+
+                  {/* Next practice */}
+                  <div className="rounded-xl p-4" style={{ background: '#161B22', border: '1px solid #30363D' }}>
+                    <div className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#8B949E' }}>
+                      Next Practice Suggestions
+                    </div>
+                    <div className="space-y-2">
+                      {report.nextPractice.map((s, i) => (
+                        <div key={i} className="flex items-start gap-2 text-sm" style={{ color: '#C9D1D9' }}>
+                          <span className="shrink-0 font-bold text-xs mt-0.5" style={{ color: '#F0A500' }}>
+                            {i + 1}.
+                          </span>
+                          {s}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : null}
             </div>
           )}
-
-          {/* Controls */}
-          <div className="flex items-center justify-center gap-4 mt-4">
-            {status === 'idle' || status === 'error' ? (
-              <Button size="lg" onClick={startSession} loading={isConnecting} className="px-8 gap-2">
-                <Mic className="h-5 w-5" />
-                Start Session
-              </Button>
-            ) : textMode ? (
-              <Button variant="destructive" size="lg" onClick={endSession} className="px-8 gap-2">
-                <PhoneOff className="h-5 w-5" />
-                End Session
-              </Button>
-            ) : (
-              <>
-                <button
-                  onClick={toggleMute}
-                  title={isMuted ? 'Unmute' : 'Mute'}
-                  className="h-11 w-11 rounded-lg flex items-center justify-center transition-all duration-150"
-                  style={{
-                    background: isMuted ? '#1F0D0D' : '#1C2333',
-                    border: `1px solid ${isMuted ? '#5C1C1A' : '#30363D'}`,
-                    color: isMuted ? '#F85149' : '#8B949E',
-                  }}
-                >
-                  {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-                </button>
-                <Button variant="destructive" size="lg" onClick={endSession} className="px-8 gap-2">
-                  <PhoneOff className="h-5 w-5" />
-                  End Session
-                </Button>
-              </>
-            )}
-          </div>
         </div>
 
-        {/* ── Right: doctor persona + score ──────────────────── */}
+        {/* ── Right: doctor card + session info ─────────────────────────── */}
         <div
           className="w-72 shrink-0 p-5 overflow-y-auto flex flex-col gap-5"
           style={{ background: '#161B22', borderLeft: '1px solid #30363D' }}
@@ -581,8 +880,12 @@ export default function SimulatorPage() {
             <div className="section-label mb-3">Doctor Profile</div>
             <div className="flex items-center gap-3 mb-4">
               <div
-                className="h-12 w-12 rounded-xl overflow-hidden shrink-0 flex items-center justify-center font-bold"
-                style={{ border: '1px solid #30363D', background: 'linear-gradient(135deg,#1A1F35,#2D3452)', color: '#F0F6FC' }}
+                className="h-12 w-12 rounded-xl overflow-hidden shrink-0 flex items-center justify-center font-bold text-sm"
+                style={{
+                  border: '1px solid #30363D',
+                  background: 'linear-gradient(135deg,#1A1F35,#2D3452)',
+                  color: '#F0F6FC',
+                }}
               >
                 <img
                   src={photoUrl}
@@ -595,21 +898,24 @@ export default function SimulatorPage() {
                 <div className="font-semibold text-sm" style={{ color: '#F0F6FC' }}>
                   {doctor.fullName}
                 </div>
-                <div className="text-xs" style={{ color: '#8B949E' }}>
-                  {doctor.specialty}
-                </div>
+                <div className="text-xs" style={{ color: '#8B949E' }}>{doctor.specialty}</div>
               </div>
             </div>
-
             <div className="space-y-3">
               <div>
                 <div className="text-xs mb-1" style={{ color: '#484F58' }}>Persona</div>
-                <span
-                  className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${personaColors[doctor.personaType]}`}
-                >
+                <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${personaColors[doctor.personaType]}`}>
                   {personaLabels[doctor.personaType]}
                 </span>
               </div>
+              {doctor.targetProduct && (
+                <div>
+                  <div className="text-xs mb-1" style={{ color: '#484F58' }}>Target product</div>
+                  <div className="text-sm font-medium" style={{ color: '#C9D1D9' }}>
+                    {doctor.targetProduct}
+                  </div>
+                </div>
+              )}
               {doctor.competitorPreference && (
                 <div>
                   <div className="text-xs mb-1" style={{ color: '#484F58' }}>Current preference</div>
@@ -643,9 +949,7 @@ export default function SimulatorPage() {
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span style={{ color: '#8B949E' }}>Difficulty</span>
-                <span
-                  className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${difficultyColors[difficulty]}`}
-                >
+                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${difficultyColors[difficulty]}`}>
                   {difficulty}
                 </span>
               </div>
@@ -655,119 +959,97 @@ export default function SimulatorPage() {
                   {objectionLabels[objectionFocus]}
                 </span>
               </div>
+              <div className="flex items-center justify-between text-xs">
+                <span style={{ color: '#8B949E' }}>Turns</span>
+                <span className="font-medium" style={{ color: '#C9D1D9' }}>{transcript.length}</span>
+              </div>
             </div>
           </div>
 
-          {/* Waveform + score */}
-          <div
-            className="rounded-[10px] border p-4 space-y-3"
-            style={{ background: '#1C2333', borderColor: '#30363D' }}
-          >
-            <div className="flex items-center gap-1.5">
-              <Mic className="h-3.5 w-3.5" style={{ color: '#8B949E' }} />
-              <span className="text-xs font-semibold" style={{ color: '#F0A500' }}>
-                Voice Practice
-              </span>
-            </div>
-
-            {/* Animated waveform */}
-            <div className="flex items-end justify-center gap-[2px] h-8">
-              {waveHeights.map((h, i) => (
-                <div
-                  key={i}
-                  style={{
-                    width: 3,
-                    height: h,
-                    borderRadius: 2,
-                    background: isActive && !textMode ? '#F0A500' : '#1C2333',
-                    transition: 'height 0.08s ease',
-                  }}
-                />
-              ))}
-            </div>
-
-            {/* Score ring */}
-            <div className="flex flex-col items-center gap-1">
-              <div className="text-xs uppercase tracking-wider" style={{ color: '#8B949E' }}>
-                Coaching Score
-              </div>
-              <div className="relative flex items-center justify-center">
-                <ScoreRing score={displayScore} size={96} />
-                <div className="absolute flex flex-col items-center">
-                  <span style={{ color: '#F0F6FC', fontSize: '1.375rem', fontWeight: 700, lineHeight: 1 }}>
-                    {displayScore}
-                  </span>
-                  <span style={{ color: '#8B949E', fontSize: '0.625rem' }}>/100</span>
+          {/* Keyboard hints */}
+          {!isEnded && (
+            <div style={{ borderTop: '1px solid #30363D', paddingTop: 16 }}>
+              <div className="section-label mb-3">Keyboard</div>
+              <div className="space-y-1.5 text-xs" style={{ color: '#8B949E' }}>
+                <div className="flex items-center justify-between">
+                  <span>{isIdle ? 'Start session' : 'End session'}</span>
+                  <kbd
+                    className="px-1.5 py-0.5 rounded font-mono"
+                    style={{ background: '#21262D', border: '1px solid #30363D', color: '#F0F6FC', fontSize: '0.65rem' }}
+                  >
+                    Space
+                  </kbd>
                 </div>
+                {!textMode && (
+                  <div className="flex items-center justify-between">
+                    <span>Mute / unmute mic</span>
+                    <kbd
+                      className="px-1.5 py-0.5 rounded font-mono"
+                      style={{ background: '#21262D', border: '1px solid #30363D', color: '#F0F6FC', fontSize: '0.65rem' }}
+                    >
+                      C
+                    </kbd>
+                  </div>
+                )}
               </div>
             </div>
+          )}
 
-            {/* Mini stats */}
-            <div className="grid grid-cols-3 gap-1">
-              {[
-                { label: 'Duration', value: formatTime(elapsed) },
-                { label: 'Turns', value: transcript.length.toString() },
-                { label: 'Mode', value: textMode ? 'Text' : 'Voice' },
-              ].map(({ label, value }) => (
-                <div
-                  key={label}
-                  className="flex flex-col items-center rounded-lg py-1.5"
-                  style={{ background: '#161B22', border: '1px solid #30363D' }}
-                >
-                  <span style={{ color: '#F0F6FC', fontSize: '0.75rem', fontWeight: 600 }}>{value}</span>
-                  <span style={{ color: '#484F58', fontSize: '0.625rem' }}>{label}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Start Practice CTA */}
-            {(status === 'idle' || status === 'error') && (
-              <button
-                onClick={startSession}
-                className="w-full h-9 rounded-lg font-bold text-sm transition-all duration-150"
-                style={{ background: '#F0A500', color: '#0D1117' }}
-                onMouseEnter={(e) => {
-                  ;(e.currentTarget as HTMLElement).style.background = '#C87D00'
-                  ;(e.currentTarget as HTMLElement).style.boxShadow = '0 0 20px rgba(240,165,0,0.18)'
-                }}
-                onMouseLeave={(e) => {
-                  ;(e.currentTarget as HTMLElement).style.background = '#F0A500'
-                  ;(e.currentTarget as HTMLElement).style.boxShadow = 'none'
-                }}
-              >
-                Start Practice
-              </button>
-            )}
-          </div>
-
-          {/* Active session indicator */}
-          {isActive && (
+          {/* Live indicator */}
+          {isLive && (
             <div
               className="rounded-[10px] p-3"
-              style={{
-                background: textMode ? '#261900' : '#12201A',
-                border: `1px solid ${textMode ? '#4D3200' : '#1F5231'}`,
-              }}
+              style={{ background: '#12201A', border: '1px solid #1F5231' }}
             >
-              <div
-                className="flex items-center gap-2 text-xs font-medium"
-                style={{ color: textMode ? '#D29922' : '#3FB950' }}
-              >
-                <div
-                  className="h-2 w-2 rounded-full animate-pulse"
-                  style={{ background: textMode ? '#D29922' : '#3FB950' }}
-                />
-                {textMode ? 'Text chat active' : 'Session active'} — {formatTime(elapsed)}
+              <div className="flex items-center gap-2 text-xs font-medium" style={{ color: '#3FB950' }}>
+                <div className="h-2 w-2 rounded-full animate-pulse" style={{ background: '#3FB950' }} />
+                Active — {formatTime(elapsed)}
               </div>
-              <p className="text-xs mt-1" style={{ color: textMode ? '#D29922' : '#3FB950', opacity: 0.8 }}>
+              <p className="text-xs mt-1" style={{ color: '#3FB950', opacity: 0.7 }}>
                 {textMode
-                  ? `Type your pitch. Dr. ${doctor.fullName.split(' ').slice(-1)[0]} will respond.`
-                  : `Speak naturally. The AI doctor is responding as Dr. ${doctor.fullName.split(' ').slice(-1)[0]}.`}
+                  ? 'Type your responses below'
+                  : micMuted
+                  ? 'Mic muted — press C to unmute'
+                  : 'Mic ON — speak naturally'}
               </p>
             </div>
           )}
+
+          {/* Disclaimer */}
+          <div className="text-xs mt-auto" style={{ color: '#484F58', lineHeight: 1.5 }}>
+            For practice and coaching purposes only. Final field messaging should follow approved medical, legal, and regulatory guidance.
+          </div>
         </div>
       </div>
+
+      {/* ── Keyboard hint strip ───────────────────────────────────────────── */}
+      {!isEnded && (
+        <div
+          className="shrink-0 px-6 py-2 flex items-center justify-center gap-8 text-xs"
+          style={{ background: '#161B22', borderTop: '1px solid #30363D', color: '#484F58' }}
+        >
+          <span>
+            <kbd
+              className="mr-1.5 px-1.5 py-0.5 rounded font-mono"
+              style={{ background: '#21262D', border: '1px solid #30363D', color: '#8B949E', fontSize: '0.65rem' }}
+            >
+              Space
+            </kbd>
+            {isIdle ? 'Start session' : 'End session'}
+          </span>
+          {!textMode && isLive && (
+            <span>
+              <kbd
+                className="mr-1.5 px-1.5 py-0.5 rounded font-mono"
+                style={{ background: '#21262D', border: '1px solid #30363D', color: '#8B949E', fontSize: '0.65rem' }}
+              >
+                C
+              </kbd>
+              Mute / unmute
+            </span>
+          )}
+        </div>
+      )}
     </div>
   )
 }

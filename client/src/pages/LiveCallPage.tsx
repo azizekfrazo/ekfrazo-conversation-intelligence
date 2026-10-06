@@ -1,427 +1,746 @@
-import { useState, useRef, useCallback } from 'react'
-import { PhoneOff, Phone, Pause, Play, ChevronDown, ChevronUp, Check } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Mic, MicOff, Phone, PhoneOff, Copy, Check, AlertTriangle, ChevronRight } from 'lucide-react'
+import { DEMO_DOCTORS } from '../data/demoDoctors'
+import {
+  TIER1, scenarioKeyFromTier1Id, SCENARIO_GUIDANCE,
+  type Mood, type Tier1Card, type ScenarioGuidance,
+} from '../data/tier1'
 
-const DEMO_MODE = true
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-interface DemoLine {
-  speaker: 'DOCTOR' | 'MR'
-  text: string
-  tier1: string
-  delay_ms: number
+// ── SpeechRecognition browser type declarations ───────────────────────────────
+interface SpeechAlternative { transcript: string; confidence: number }
+interface SpeechResult { readonly length: number; isFinal: boolean; [i: number]: SpeechAlternative }
+interface SpeechResultList { readonly length: number; [i: number]: SpeechResult }
+interface SREvent extends Event { resultIndex: number; results: SpeechResultList }
+interface SRErrorEvent extends Event { error: string }
+interface SRInstance extends EventTarget {
+  continuous: boolean; interimResults: boolean; lang: string
+  start(): void; stop(): void; abort(): void
+  onstart:      ((e: Event) => void) | null
+  onend:        ((e: Event) => void) | null
+  onaudiostart: ((e: Event) => void) | null
+  onresult:     ((e: SREvent) => void) | null
+  onerror:      ((e: SRErrorEvent) => void) | null
 }
-interface LogEntry {
-  ts: string          // HH:MM:SS
-  speaker: 'DOCTOR' | 'MR'
-  text: string
-  tier1: string
-  mood: string
-  moodColor: string
-}
-interface CueCard {
-  tier1: string; say: string; evidence: string; next: string
-  mood: string; moodColor: string; moodDots: number
+declare global {
+  interface Window {
+    SpeechRecognition?: new () => SRInstance
+    webkitSpeechRecognition?: new () => SRInstance
+  }
 }
 
-// ─── Demo transcript ──────────────────────────────────────────────────────────
-const DEMO_TRANSCRIPT: DemoLine[] = [
-  { speaker: 'DOCTOR', text: "What makes Glycomet GP better than Galvus?",              tier1: 'competitor',    delay_ms: 3000 },
-  { speaker: 'MR',     text: "We show superior HbA1c reduction at 26 weeks, Doctor.",   tier1: 'efficacy',      delay_ms: 5000 },
-  { speaker: 'DOCTOR', text: "Do you have Indian patient data? Not western trials.",     tier1: 'efficacy',      delay_ms: 5500 },
-  { speaker: 'MR',     text: "Yes — STRIDE-India RCT, n=1,240 South Asian patients.",   tier1: 'efficacy',      delay_ms: 5000 },
-  { speaker: 'DOCTOR', text: "My patients can't afford branded medicines.",              tier1: 'price',         delay_ms: 6000 },
-  { speaker: 'MR',     text: "Our PSP brings cost to ₹299/month for eligible patients.",tier1: 'price',         delay_ms: 5000 },
-  { speaker: 'DOCTOR', text: "What's the dosing schedule?",                              tier1: 'dosing',        delay_ms: 5000 },
-  { speaker: 'MR',     text: "Once daily 5 mg with the morning meal — no titration.",   tier1: 'dosing',        delay_ms: 5500 },
-  { speaker: 'DOCTOR', text: "Are you on the CGHS formulary?",                          tier1: 'formulary',     delay_ms: 6000 },
-  { speaker: 'MR',     text: "Yes — CGHS empanelled since January 2024, 12 panels.",    tier1: 'formulary',     delay_ms: 5000 },
-  { speaker: 'DOCTOR', text: "I'm concerned about the side effect profile.",            tier1: 'side_effects',  delay_ms: 5500 },
-  { speaker: 'DOCTOR', text: "Tell me more — this seems quite interesting.",            tier1: 'positive',      delay_ms: 4500 },
-]
+// ── Constants ─────────────────────────────────────────────────────────────────
+const MAX_HISTORY  = 8
+const ABORT_LIMIT  = 6
+const MIN_WORDS    = 4
 
-// ─── Demo doctors ─────────────────────────────────────────────────────────────
-const DEMO_DOCTORS = [
-  {
-    id: 'priya',
-    name: 'Dr. Priya Mehta',
-    specialty: 'Diabetologist',
-    persona: 'Evidence-Driven',
-    difficulty: 'Medium' as const,
-    personaClass: 'bg-[#0D2137] text-[#58A6FF] border-[#1F4C73]',
-    photo: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=80&h=80&auto=format&fit=crop&q=70',
+// ── Doctor profiles for Tier 2 context injection ──────────────────────────────
+interface DoctorProfile { key: string; label: string; context: string }
+const PROFILES: Record<string, DoctorProfile> = {
+  gp_formulary: {
+    key: 'gp_formulary',
+    label: 'General Practitioner — Formulary Focus',
+    context: 'GP with 200+ patients/month. Prescribes heavily from Tier 1 formulary. Price-sensitive, skeptical of new brands. Primary goal: evidence for cost-effective switch or addition.',
   },
-  {
-    id: 'rajesh',
-    name: 'Dr. Rajesh Kumar',
-    specialty: 'General Physician',
-    persona: 'Price-Sensitive',
-    difficulty: 'Hard' as const,
-    personaClass: 'bg-[#1F0D0D] text-[#F85149] border-[#5C1C1A]',
-    photo: 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=80&h=80&auto=format&fit=crop&q=70',
+  specialist_early_adopter: {
+    key: 'specialist_early_adopter',
+    label: 'Specialist — Evidence-Driven',
+    context: 'Specialist at a private or academic hospital. Open to new molecules if clinical data supports. Influences junior doctors. Primary goal: peer-reviewed outcomes data and head-to-head comparisons.',
   },
-  {
-    id: 'ananya',
-    name: 'Dr. Ananya Singh',
-    specialty: 'Endocrinologist',
-    persona: 'Skeptical',
-    difficulty: 'Hard' as const,
-    personaClass: 'bg-[#261900] text-[#D29922] border-[#4D3200]',
-    photo: 'https://images.unsplash.com/photo-1594824476967-48c8b964273f?w=80&h=80&auto=format&fit=crop&q=70',
+  hospital_formulary_committee: {
+    key: 'hospital_formulary_committee',
+    label: 'Hospital Committee / Procurement',
+    context: 'Pharmacist or physician on hospital procurement committee. Decides formulary additions quarterly. Primary goal: bulk pricing, safety profile, post-market surveillance, and compliance documentation.',
   },
-]
-
-// ─── Cue library ──────────────────────────────────────────────────────────────
-const CUE_LIBRARY: Record<string, Omit<CueCard, 'tier1'>> = {
-  competitor:     { say: "vs. Galvus, we show superior HbA1c reduction at 26 weeks with 65% lower hypoglycaemia.",   evidence: "COMPARE-DM: −1.8% HbA1c vs −1.4% (p=0.003); hypo 1.2% vs 3.4%",       next: "Shall I walk you through the head-to-head data?",              mood: 'Skeptical',    moodColor: '#F97316', moodDots: 2 },
-  efficacy:       { say: "STRIDE-India RCT (n=1,240) showed −1.9% HbA1c at 52 weeks in South Asian patients.",       evidence: "STRIDE-India NEJM 2023: −1.9% HbA1c; 68% reaching target <7%",       next: "I have the full paper here — would you like a copy?",          mood: 'Neutral',      moodColor: '#F0A500', moodDots: 3 },
-  price:          { say: "We have a PSP — eligible patients pay ₹299/month after programme enrolment.",               evidence: "PSP: up to 70% subsidy; 4,200 patients enrolled in Maharashtra",      next: "Can I register your next 5 patients in the programme today?",  mood: 'Warm',         moodColor: '#3FB950', moodDots: 5 },
-  dosing:         { say: "Once-daily 5 mg with the morning meal — no titration needed for most patients.",            evidence: "Label: 5 mg OD; renal dose adjustment only at eGFR <45",             next: "Would a dosing card for your prescription pad be helpful?",    mood: 'Warm',         moodColor: '#3FB950', moodDots: 4 },
-  formulary:      { say: "We're CGHS empanelled and on 12 major insurance panels here.",                              evidence: "CGHS since Jan 2024; SBI, HDFC Health, Star Health all covered",      next: "Which insurer do most of your patients use? I'll confirm.",    mood: 'Neutral',      moodColor: '#F0A500', moodDots: 3 },
-  side_effects:   { say: "Our safety data shows GI events under 3% — lower than the class average.",                 evidence: "ACCORD-India 2022: GI AEs 2.8% vs 4.1% comparator (p<0.05)",         next: "Can I share the full safety dossier with you?",               mood: 'Neutral',      moodColor: '#F0A500', moodDots: 3 },
-  positive:       { say: "Excellent — let me leave 10 samples and our starter kit with full study references.",       evidence: "Starter kit: 10 samples + STRIDE-India reprint + PSP enrolment form", next: "Should I schedule a CME with your team next month?",           mood: 'Warm',         moodColor: '#3FB950', moodDots: 5 },
-  not_interested: { say: "I understand you're busy, Doctor. Let me leave samples — one trial patient is all I ask.", evidence: "Avg meaningful response seen in just 4 weeks",                        next: "Which patient starting this week would benefit most?",         mood: 'Resistant',    moodColor: '#F85149', moodDots: 1 },
 }
 
-function fmtTime(s: number) { return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}` }
-function nowTs() {
-  const d = new Date()
-  return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`
+function getProfileForSpecialty(specialty: string): DoctorProfile {
+  const s = specialty.toLowerCase()
+  if (s.includes('general') || s.includes('gp')) return PROFILES.gp_formulary
+  if (s.includes('hospital') || s.includes('pharma') || s.includes('committee'))
+    return PROFILES.hospital_formulary_committee
+  return PROFILES.specialist_early_adopter // cardiologist, neurologist, oncologist, diabetologist, etc.
 }
 
-// ─── Main page ────────────────────────────────────────────────────────────────
+// ── Internal interfaces ────────────────────────────────────────────────────────
+interface HistoryEntry { text: string; timestamp: number; speaker: 'customer' | 'advisor' }
+interface Bubble { id: string; text: string; speaker: 'customer' | 'advisor' | 'system'; ts: number }
+interface CueCardData { say: string; mood: Mood; next: string; alert: string | null }
+
+// ── Mood → display colour ─────────────────────────────────────────────────────
+const MOOD_STYLE: Record<Mood, { bg: string; color: string }> = {
+  Warm:      { bg: 'rgba(63,185,80,0.12)',  color: '#3FB950' },
+  Sceptical: { bg: 'rgba(240,165,0,0.12)',  color: '#F0A500' },
+  Neutral:   { bg: 'rgba(139,148,158,0.12)', color: '#8B949E' },
+  Urgent:    { bg: 'rgba(248,81,73,0.12)',   color: '#F85149' },
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function fmtTime(s: number): string {
+  const m = Math.floor(s / 60)
+  const sec = s % 60
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+}
+
+function parseCardFields(text: string): CueCardData {
+  const say  = text.match(/SAY_EN:\s*([\s\S]+?)(?=\nMOOD:|$)/)?.[1]?.trim()    ?? ''
+  const rawMood = text.match(/MOOD:\s*(\w+)/)?.[1]?.trim() ?? 'Neutral'
+  const mood = (['Warm', 'Sceptical', 'Neutral', 'Urgent'] as Mood[]).includes(rawMood as Mood)
+    ? (rawMood as Mood)
+    : 'Neutral'
+  const next  = text.match(/NEXT_EN:\s*([\s\S]+?)(?=\nALERT:|$)/)?.[1]?.trim() ?? ''
+  const rawAlert = text.match(/ALERT:\s*([\s\S]+?)$/)?.[1]?.trim() ?? ''
+  return { say, mood, next, alert: rawAlert || null }
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 export default function LiveCallPage() {
-  const [selectedDoctorId, setSelectedDoctorId] = useState(DEMO_DOCTORS[0].id)
-  const [isLive, setIsLive]     = useState(false)
-  const [isPaused, setIsPaused] = useState(false)
-  const [micDenied, setMicDenied] = useState(false)
+  // ── State (drives re-renders)
+  const [isRecording,      setIsRecording]      = useState(false)
+  const [customerSpeaking, setCustomerSpeaking] = useState(false)
+  const [selectedDoctorId, setSelectedDoctorId] = useState(DEMO_DOCTORS[0]?.id ?? '')
+  const [customerName,     setCustomerName]     = useState('')
+  const [callSeconds,      setCallSeconds]      = useState(0)
+  const [interimText,      setInterimText]      = useState('')
+  const [bubbles,          setBubbles]          = useState<Bubble[]>([])
+  const [cueCard,          setCueCard]          = useState<CueCardData | null>(null)
+  const [cueCardStreaming, setCueCardStreaming]  = useState(false)
+  const [scenarioKey,      setScenarioKey]      = useState<string | null>(null)
+  const [statusMsg,        setStatusMsg]        = useState<string | null>(null)
+  const [copied,           setCopied]           = useState(false)
 
-  const [currentText, setCurrentText]       = useState('')
-  const [currentSpeaker, setCurrentSpeaker] = useState<'DOCTOR' | 'MR' | null>(null)
-  const [currentCue, setCurrentCue]         = useState<CueCard | null>(null)
-  const [cueSlideIn, setCueSlideIn]         = useState(false)
-  const [cueUsed, setCueUsed]               = useState(false)
+  // ── Refs (for use inside event handler closures)
+  const isRecordingRef      = useRef(false)
+  const customerSpeakingRef = useRef(false)
+  // invariant: set at FIRST interim result, cleared after isFinal and in onend
+  const utteranceIsCustomerRef = useRef<boolean | null>(null)
+  const recognitionRef         = useRef<SRInstance | null>(null)
+  const streamControllerRef    = useRef<AbortController | null>(null)
+  const transcriptHistoryRef   = useRef<HistoryEntry[]>([])
+  const consecutiveAbortsRef   = useRef(0)
+  const callTimerRef           = useRef<ReturnType<typeof setInterval> | null>(null)
+  const greetingTimerRef       = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const processTimerRef        = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // shadow state values for async / closure access
+  const selectedDoctorIdRef = useRef(DEMO_DOCTORS[0]?.id ?? '')
+  const customerNameRef     = useRef('')
+  const transcriptEndRef    = useRef<HTMLDivElement>(null)
 
-  const [callLog, setCallLog]       = useState<LogEntry[]>([])
-  const [logExpanded, setLogExpanded] = useState(false)
-  const [elapsed, setElapsed]       = useState(0)
+  // Keep shadow refs in sync
+  useEffect(() => { selectedDoctorIdRef.current = selectedDoctorId }, [selectedDoctorId])
+  useEffect(() => { customerNameRef.current = customerName }, [customerName])
 
-  const isLiveRef  = useRef(false)
-  const isPausedRef = useRef(false)
-  const demoRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const timerRef   = useRef<number | null>(null)
-  const startRef   = useRef(0)
+  // ── Derived
+  const selectedDoctor  = DEMO_DOCTORS.find(d => d.id === selectedDoctorId) ?? null
+  const currentProfile  = getProfileForSpecialty(selectedDoctor?.specialty ?? '')
+  const scenarioGuidance: ScenarioGuidance | null = scenarioKey ? (SCENARIO_GUIDANCE[scenarioKey] ?? null) : null
+  const phase = !isRecording ? 'IDLE' : customerSpeaking ? 'CUSTOMER' : 'ADVISOR'
 
-  const selectedDoctor = DEMO_DOCTORS.find(d => d.id === selectedDoctorId)!
+  // ── Auto-scroll transcript
+  useEffect(() => {
+    transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [bubbles, interimText])
 
-  // ── Elapsed ticker ───────────────────────────────────────────────────────────
-  const startTimer = useCallback(() => {
-    if (timerRef.current) clearInterval(timerRef.current)
-    startRef.current = Date.now() - elapsed * 1000
-    timerRef.current = window.setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startRef.current) / 1000))
-    }, 1000)
-  }, [elapsed])
-  const stopTimer = () => { if (timerRef.current) clearInterval(timerRef.current) }
-
-  // ── Demo replay ───────────────────────────────────────────────────────────────
-  const scheduleLine = useCallback((idx: number) => {
-    if (idx >= DEMO_TRANSCRIPT.length) return
-    const line = DEMO_TRANSCRIPT[idx]
-    demoRef.current = setTimeout(() => {
-      if (!isLiveRef.current) return
-      const cueBase = CUE_LIBRARY[line.tier1]
-      const cue: CueCard = { ...cueBase, tier1: line.tier1 }
-
-      setCurrentText(line.text)
-      setCurrentSpeaker(line.speaker)
-
-      if (line.speaker === 'DOCTOR') {
-        setCueUsed(false)
-        setCueSlideIn(false)
-        setTimeout(() => { setCurrentCue(cue); setCueSlideIn(true) }, 120)
-        setCallLog(prev => [...prev, {
-          ts: nowTs(), speaker: line.speaker, text: line.text,
-          tier1: line.tier1, mood: cueBase.mood, moodColor: cueBase.moodColor,
-        }])
+  // ── Keyboard bindings (Space → record toggle, C → speaker toggle)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      if (e.key === ' ') {
+        e.preventDefault()
+        if (isRecordingRef.current) stopRecording()
+        else startRecording()
       }
-      scheduleLine(idx + 1)
-    }, line.delay_ms)
-  }, [])
-
-  // ── Start / pause / end ───────────────────────────────────────────────────────
-  const startDemo = async () => {
-    if (!DEMO_MODE) {
-      try {
-        await navigator.mediaDevices.getUserMedia({ audio: true })
-        // live mic: WebSocket to ws://localhost:4000/ws/deepgram-relay
-        // (stub — not implemented; falls through to demo)
-      } catch {
-        setMicDenied(true)
+      if ((e.key === 'c' || e.key === 'C') && isRecordingRef.current) {
+        toggleCustomerSpeaking()
       }
     }
-    setIsLive(true)
-    isLiveRef.current = true
-    isPausedRef.current = false
-    setIsPaused(false)
-    setCallLog([])
-    setCurrentCue(null)
-    setCueSlideIn(false)
-    setCueUsed(false)
-    setCurrentText('')
-    setCurrentSpeaker(null)
-    setElapsed(0)
-    startRef.current = Date.now()
-    startTimer()
-    scheduleLine(0)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, []) // no reactive deps — uses only refs
+
+  // ── Cleanup on unmount
+  useEffect(() => () => stopRecording(), [])
+
+  // ── Call phase machine ─────────────────────────────────────────────────────
+
+  function startRecording() {
+    if (isRecordingRef.current) return
+    isRecordingRef.current = true
+    customerSpeakingRef.current = false
+    utteranceIsCustomerRef.current = null
+    consecutiveAbortsRef.current = 0
+    setIsRecording(true)
+    setCustomerSpeaking(false)
+    setCallSeconds(0)
+    setInterimText('')
+    setStatusMsg(null)
+
+    if (callTimerRef.current) clearInterval(callTimerRef.current)
+    callTimerRef.current = setInterval(() => setCallSeconds(s => s + 1), 1000)
+
+    // 500ms greeting card — if an utterance arrives before this fires, it overwrites
+    if (greetingTimerRef.current) clearTimeout(greetingTimerRef.current)
+    greetingTimerRef.current = setTimeout(renderGreetingCard, 500)
+
+    initRecognition()
   }
 
-  const togglePause = () => {
-    const next = !isPaused
-    setIsPaused(next)
-    isPausedRef.current = next
-    if (next) {
-      stopTimer()
-      if (demoRef.current) clearTimeout(demoRef.current)
-    } else {
-      startTimer()
+  function stopRecording() {
+    if (!isRecordingRef.current) return
+    isRecordingRef.current = false
+    customerSpeakingRef.current = false
+    utteranceIsCustomerRef.current = null
+    setIsRecording(false)
+    setCustomerSpeaking(false)
+    setInterimText('')
+
+    if (callTimerRef.current)    { clearInterval(callTimerRef.current); callTimerRef.current = null }
+    if (greetingTimerRef.current) { clearTimeout(greetingTimerRef.current); greetingTimerRef.current = null }
+    if (processTimerRef.current)  { clearTimeout(processTimerRef.current); processTimerRef.current = null }
+
+    if (recognitionRef.current) { recognitionRef.current.stop(); recognitionRef.current = null }
+    if (streamControllerRef.current) { streamControllerRef.current.abort(); streamControllerRef.current = null }
+  }
+
+  function toggleCustomerSpeaking() {
+    const next = !customerSpeakingRef.current
+    customerSpeakingRef.current = next
+    setCustomerSpeaking(next)
+  }
+
+  // ── Speech recognition lifecycle ──────────────────────────────────────────
+
+  function initRecognition() {
+    const SpeechRec = window.SpeechRecognition ?? window.webkitSpeechRecognition
+    if (!SpeechRec) {
+      setStatusMsg('Speech recognition is not supported in this browser. Use Chrome or Edge.')
+      stopRecording()
+      return
+    }
+
+    const r = new SpeechRec()
+    r.continuous      = true
+    r.interimResults  = true
+    r.lang            = 'en-IN'
+
+    let utteranceStarted = false
+
+    r.onaudiostart = () => {
+      consecutiveAbortsRef.current = 0
+    }
+
+    r.onresult = (event: SREvent) => {
+      // ── Invariant #1: capture speaker at FIRST interim, not at isFinal ──
+      if (!utteranceStarted) {
+        utteranceStarted = true
+        utteranceIsCustomerRef.current = customerSpeakingRef.current
+      }
+
+      let interim = ''
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i]
+        if (result.isFinal) {
+          const text          = result[0].transcript.trim()
+          const wasCustomer   = utteranceIsCustomerRef.current ?? false
+          utteranceStarted    = false
+          utteranceIsCustomerRef.current = null
+
+          // Push to history (capped at MAX_HISTORY)
+          const entry: HistoryEntry = { text, timestamp: Date.now(), speaker: wasCustomer ? 'customer' : 'advisor' }
+          transcriptHistoryRef.current = [...transcriptHistoryRef.current, entry].slice(-MAX_HISTORY)
+
+          addBubble(text, wasCustomer ? 'customer' : 'advisor')
+
+          // 150ms debounce — only process customer utterances
+          if (wasCustomer) {
+            if (processTimerRef.current) clearTimeout(processTimerRef.current)
+            const capturedText = text
+            processTimerRef.current = setTimeout(() => processCueCard(capturedText), 150)
+          }
+
+          setInterimText('')
+        } else {
+          interim += result[0].transcript
+        }
+      }
+      if (interim) setInterimText(interim)
+    }
+
+    r.onend = () => {
+      utteranceStarted = false
+      utteranceIsCustomerRef.current = null // clear stale state
+      if (isRecordingRef.current) {
+        // Auto-restart after 300ms — keeps recognition alive across pauses
+        setTimeout(() => {
+          if (isRecordingRef.current && recognitionRef.current === r) {
+            try { r.start() } catch { /* already started */ }
+          }
+        }, 300)
+      }
+    }
+
+    r.onerror = (event: SRErrorEvent) => {
+      const err = event.error
+      if (err === 'not-allowed') {
+        setStatusMsg('Microphone access denied. Allow mic permission and try again.')
+        stopRecording()
+      } else if (err === 'no-speech') {
+        // normal silence — reset abort counter
+        consecutiveAbortsRef.current = 0
+      } else if (err === 'aborted') {
+        consecutiveAbortsRef.current++
+        if (consecutiveAbortsRef.current >= ABORT_LIMIT) {
+          setStatusMsg('Mic conflict — another app (Teams, Zoom) may be using the microphone. Close it and restart.')
+          stopRecording()
+        }
+      } else {
+        addBubble(`Recognition error: ${err}`, 'system')
+      }
+    }
+
+    recognitionRef.current = r
+    try { r.start() } catch {
+      setStatusMsg('Failed to start microphone. Check browser permissions.')
+      stopRecording()
     }
   }
 
-  const endCall = () => {
-    isLiveRef.current = false
-    setIsLive(false)
-    setIsPaused(false)
-    stopTimer()
-    if (demoRef.current) clearTimeout(demoRef.current)
+  // ── Two-tier detection ────────────────────────────────────────────────────
+
+  function processCueCard(statement: string) {
+    const wordCount = statement.trim().split(/\s+/).filter(Boolean).length
+    if (wordCount < MIN_WORDS) return // 4-word minimum gate
+
+    // Tier 1 — instant keyword matching (first-match-wins, word-boundary-padded)
+    const t1 = checkTier1(statement)
+    if (t1) {
+      setCueCard(t1.card as CueCardData)
+      setCueCardStreaming(false)
+      setScenarioKey(scenarioKeyFromTier1Id(t1.id))
+      return
+    }
+
+    // Tier 2 — LLM fallback
+    setScenarioKey(null)
+    void callTier2(statement)
   }
+
+  function checkTier1(text: string) {
+    const padded = ' ' + text.toLowerCase() + ' ' // word-boundary padding (invariant #2)
+    for (const entry of TIER1) {
+      for (const pattern of entry.patterns) {
+        if (padded.includes(pattern)) return entry
+      }
+    }
+    return null
+  }
+
+  // ── Greeting card (shown 500ms after call start) ─────────────────────────
+
+  function renderGreetingCard() {
+    const doctor = DEMO_DOCTORS.find(d => d.id === selectedDoctorIdRef.current)
+    setCueCard({
+      say: `Good morning. I'd like to share some clinical updates that I believe could benefit your ${doctor?.specialty?.toLowerCase() ?? 'patients'} patients.`,
+      mood: 'Warm',
+      next: `Call started — ${doctor?.fullName ?? 'Doctor not selected'} · ${doctor?.specialty ?? ''}. Listen for questions on efficacy, pricing, or competitors.`,
+      alert: null,
+    })
+    setCueCardStreaming(false)
+    setScenarioKey(null)
+  }
+
+  // ── Tier 2 — SSE streaming ────────────────────────────────────────────────
+
+  async function callTier2(statement: string) {
+    // Abort any in-flight stream (invariant #5)
+    if (streamControllerRef.current) {
+      streamControllerRef.current.abort()
+      await new Promise(r => setTimeout(r, 30)) // 30ms flush gap
+    }
+    const controller = new AbortController()
+    streamControllerRef.current = controller
+
+    setCueCardStreaming(true)
+    setCueCard({ say: '', mood: 'Neutral', next: '', alert: null })
+
+    const doctor      = DEMO_DOCTORS.find(d => d.id === selectedDoctorIdRef.current)
+    const profile     = doctor ? getProfileForSpecialty(doctor.specialty) : null
+    const recentHist  = transcriptHistoryRef.current.filter(t => t.speaker === 'customer').slice(-6)
+    const contextStr  = recentHist.map(t => `Doctor: ${t.text}`).join('\n')
+
+    let fullText   = ''
+    let tokenCount = 0
+
+    try {
+      const res = await fetch('/api/livecall/cuecard', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal:  controller.signal,
+        body: JSON.stringify({
+          statement,
+          context:        contextStr,
+          transcript:     recentHist.map(t => t.text),
+          customerName:   customerNameRef.current || doctor?.fullName || '',
+          profileContext: profile?.context ?? null,
+          instruction:    `The doctor just said: "${statement}". Provide specific coaching guidance for THIS exact statement.`,
+        }),
+      })
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (!res.body) throw new Error('No response body')
+
+      const reader  = res.body.getReader()
+      const decoder = new TextDecoder()
+
+      outer: while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const chunk = decoder.decode(value, { stream: true })
+        for (const line of chunk.split('\n')) {
+          if (!line.startsWith('data: ')) continue
+          const payload = line.slice(6)
+          if (payload === '[DONE]') break outer
+          try {
+            const parsed = JSON.parse(payload) as { text: string }
+            fullText += parsed.text
+            tokenCount++
+            if (tokenCount % 2 === 0) setCueCard(parseCardFields(fullText)) // re-render every 2 tokens
+          } catch { /* ignore malformed lines */ }
+        }
+      }
+      setCueCard(parseCardFields(fullText))
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') return // silently ignored — new utterance arrived
+      setCueCard({
+        say:  'Unable to load coaching guidance — check server connection.',
+        mood: 'Neutral',
+        next: 'Tier 1 keyword matching is still active. Continue the call.',
+        alert: null,
+      })
+    } finally {
+      setCueCardStreaming(false)
+    }
+  }
+
+  // ── Bubble helpers ────────────────────────────────────────────────────────
+
+  function addBubble(text: string, speaker: Bubble['speaker']) {
+    setBubbles(prev => [...prev, { id: `${Date.now()}-${Math.random()}`, text, speaker, ts: Date.now() }])
+  }
+
+  async function copyCard() {
+    if (!cueCard?.say) return
+    await navigator.clipboard.writeText(cueCard.say)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  const moodStyle = cueCard ? MOOD_STYLE[cueCard.mood] : MOOD_STYLE.Neutral
 
   return (
-    <div className="p-6 max-w-2xl mx-auto space-y-4">
-      {/* Mic denied warning */}
-      {micDenied && (
-        <div className="rounded-lg px-4 py-2.5 text-sm flex items-center gap-2"
-          style={{ background: '#261900', border: '1px solid #4D3200', color: '#F0A500' }}>
-          ⚠ Mic access denied — running in demo mode
-        </div>
-      )}
+    <div className="flex flex-col h-full" style={{ background: '#0D1117', minHeight: '100vh' }}>
 
-      {/* Header row */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          {isLive && (
-            <div className="flex items-center gap-1.5">
-              <div className="h-2.5 w-2.5 rounded-full animate-pulse" style={{ background: '#F85149' }} />
-              <span className="text-sm font-bold" style={{ color: '#F85149' }}>LIVE</span>
-            </div>
-          )}
-          <div>
-            <h1 className="page-title text-base">{selectedDoctor.name}</h1>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-xs" style={{ color: '#8B949E' }}>{selectedDoctor.specialty}</span>
-              <span className={`inline-flex items-center rounded-full border px-2 py-0 text-[10px] font-medium ${selectedDoctor.personaClass}`}>
-                {selectedDoctor.persona}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {isLive ? (
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-mono font-semibold px-2.5 py-1 rounded-lg"
-              style={{ background: '#261900', color: '#F0A500', border: '1px solid #4D3200' }}>
-              {fmtTime(elapsed)}
-            </span>
-            <button onClick={togglePause}
-              className="h-9 w-9 rounded-lg flex items-center justify-center"
-              style={{ background: '#1C2333', border: '1px solid #30363D', color: '#8B949E' }}>
-              {isPaused ? <Play style={{ width: 14, height: 14 }} /> : <Pause style={{ width: 14, height: 14 }} />}
-            </button>
-            <button onClick={endCall}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium"
-              style={{ background: '#1F0D0D', border: '1px solid #5C1C1A', color: '#F85149' }}>
-              <PhoneOff style={{ width: 14, height: 14 }} /> End Call
-            </button>
-          </div>
-        ) : (
-          /* Doctor dropdown — shown before starting */
+      {/* ── Top bar ─────────────────────────────────────────────────────── */}
+      <div
+        className="flex items-center gap-4 px-6 py-3 flex-wrap"
+        style={{ background: '#161B22', borderBottom: '1px solid #30363D' }}
+      >
+        {/* Doctor selector */}
+        <div className="flex items-center gap-2">
+          <Phone className="h-4 w-4 shrink-0" style={{ color: '#8B949E' }} />
           <select
             value={selectedDoctorId}
-            onChange={(e) => setSelectedDoctorId(e.target.value)}
-            className="text-sm rounded-lg px-3 py-2"
-            style={{ background: '#1C2333', border: '1px solid #30363D', color: '#C9D1D9', outline: 'none' }}>
+            onChange={e => setSelectedDoctorId(e.target.value)}
+            className="h-8 rounded-lg px-2 text-sm"
+            style={{ background: '#1C2333', border: '1px solid #30363D', color: '#C9D1D9' }}
+          >
             {DEMO_DOCTORS.map(d => (
-              <option key={d.id} value={d.id}>{d.name} ({d.difficulty})</option>
+              <option key={d.id} value={d.id}>
+                {d.fullName} — {d.specialty}
+              </option>
             ))}
           </select>
+        </div>
+
+        {/* Doctor name override */}
+        <input
+          type="text"
+          placeholder="Override doctor name…"
+          value={customerName}
+          onChange={e => setCustomerName(e.target.value)}
+          className="h-8 rounded-lg px-3 text-sm"
+          style={{ background: '#1C2333', border: '1px solid #30363D', color: '#C9D1D9', width: 220 }}
+        />
+
+        {/* Profile badge */}
+        <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(88,166,255,0.1)', color: '#58A6FF', border: '1px solid rgba(88,166,255,0.2)' }}>
+          {currentProfile.label}
+        </span>
+
+        {/* Call timer */}
+        <div className="ml-auto font-mono text-lg font-bold" style={{ color: isRecording ? '#3FB950' : '#484F58' }}>
+          {fmtTime(callSeconds)}
+        </div>
+      </div>
+
+      {/* ── Status strip ────────────────────────────────────────────────── */}
+      <div
+        className="flex items-center gap-3 px-6 py-2"
+        style={{
+          background: phase === 'CUSTOMER' ? 'rgba(63,185,80,0.06)'
+            : phase === 'ADVISOR' ? 'rgba(88,166,255,0.06)'
+            : '#0D1117',
+          borderBottom: '1px solid #21262D',
+        }}
+      >
+        <span
+          className="h-2 w-2 rounded-full shrink-0"
+          style={{
+            background: phase === 'CUSTOMER' ? '#3FB950'
+              : phase === 'ADVISOR' ? '#58A6FF'
+              : '#484F58',
+            boxShadow: isRecording ? '0 0 6px currentColor' : 'none',
+            animation: isRecording ? 'pulse 2s infinite' : 'none',
+          }}
+        />
+        <span className="text-sm font-medium" style={{ color: '#C9D1D9' }}>
+          {phase === 'IDLE'     && 'IDLE — Press Space to start recording'}
+          {phase === 'ADVISOR'  && 'RECORDING — ADVISOR speaking (press C to switch to Doctor)'}
+          {phase === 'CUSTOMER' && 'RECORDING — DOCTOR speaking (press C to switch to Advisor)'}
+        </span>
+        {statusMsg && (
+          <span className="ml-auto flex items-center gap-1 text-xs" style={{ color: '#F85149' }}>
+            <AlertTriangle className="h-3.5 w-3.5" /> {statusMsg}
+          </span>
         )}
       </div>
 
-      {/* Start button */}
-      {!isLive && (
-        <button onClick={startDemo}
-          className="w-full py-3 rounded-xl font-bold text-base flex items-center justify-center gap-2"
-          style={{ background: '#F0A500', color: '#0D1117' }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#C87D00' }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#F0A500' }}>
-          <Phone style={{ width: 18, height: 18 }} />
-          Start Demo Call
-        </button>
-      )}
+      {/* ── Main content ─────────────────────────────────────────────────── */}
+      <div className="flex flex-1 overflow-hidden">
 
-      {/* Waveform + transcript line */}
-      {isLive && (
-        <div className="rounded-[10px] border px-4 py-3 flex items-center gap-3"
-          style={{ background: '#161B22', borderColor: '#30363D' }}>
-          <div className="flex items-center gap-0.5" style={{ height: 28 }}>
-            {Array.from({ length: 8 }, (_, i) => (
-              <span key={i} className="inline-block rounded-sm" style={{
-                width: 4,
-                background: isPaused ? '#30363D' : '#F0A500',
-                animation: isPaused ? 'none' : `waveBar 1.2s ease-in-out ${i * 0.1}s infinite`,
-                height: isPaused ? 6 : undefined,
-              }} />
-            ))}
-          </div>
-          <div className="flex flex-col min-w-0">
-            <span className="text-xs font-semibold" style={{ color: isPaused ? '#484F58' : '#F0A500' }}>
-              {isPaused ? 'Paused'
-                : currentSpeaker === 'DOCTOR' ? '🎤 Doctor speaking…'
-                : currentSpeaker === 'MR'     ? '🎤 MR speaking…'
-                : 'Listening…'}
+        {/* ── Left: Controls + Transcript ─────────────────────────────── */}
+        <div className="flex flex-col flex-1 min-w-0">
+
+          {/* Controls */}
+          <div className="flex items-center gap-3 px-6 py-4" style={{ borderBottom: '1px solid #21262D' }}>
+            {/* Start/Stop */}
+            <button
+              onClick={() => isRecording ? stopRecording() : startRecording()}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-150"
+              style={{
+                background: isRecording ? 'rgba(248,81,73,0.12)' : 'rgba(63,185,80,0.12)',
+                border: `1px solid ${isRecording ? '#F85149' : '#3FB950'}`,
+                color: isRecording ? '#F85149' : '#3FB950',
+              }}
+            >
+              {isRecording ? <><PhoneOff className="h-4 w-4" /> End Call</> : <><Mic className="h-4 w-4" /> Start Call</>}
+            </button>
+            <span className="text-xs" style={{ color: '#484F58' }}>Space</span>
+
+            <div className="w-px h-5" style={{ background: '#30363D' }} />
+
+            {/* Speaker toggle */}
+            <button
+              onClick={toggleCustomerSpeaking}
+              disabled={!isRecording}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all duration-150 disabled:opacity-40"
+              style={{
+                background: customerSpeaking ? 'rgba(63,185,80,0.12)' : 'rgba(88,166,255,0.08)',
+                border: `1px solid ${customerSpeaking ? '#3FB950' : '#30363D'}`,
+                color: customerSpeaking ? '#3FB950' : '#8B949E',
+              }}
+            >
+              {customerSpeaking ? <><MicOff className="h-4 w-4" /> Doctor speaking</> : <><Mic className="h-4 w-4" /> Advisor speaking</>}
+            </button>
+            <span className="text-xs" style={{ color: '#484F58' }}>C</span>
+
+            <span className="ml-auto text-xs" style={{ color: '#484F58' }}>
+              {bubbles.length} utterances · {transcriptHistoryRef.current.filter(t => t.speaker === 'customer').length} doctor turns
             </span>
-            {currentText && (
-              <span className="text-xs italic truncate mt-0.5" style={{ color: '#8B949E' }}>
-                "{currentText}"
-              </span>
-            )}
           </div>
-        </div>
-      )}
 
-      {/* Cue card */}
-      {isLive && currentCue && (
-        <div
-          className="rounded-[10px] border overflow-hidden"
-          style={{
-            background: '#161B22', borderColor: '#30363D',
-            opacity: cueUsed ? 0.35 : cueSlideIn ? 1 : 0,
-            transform: cueUsed ? 'scale(0.98)' : cueSlideIn ? 'translateX(0)' : 'translateX(16px)',
-            transition: 'opacity 0.3s ease, transform 0.3s ease',
-          }}>
-          <div className="px-4 py-3" style={{ background: 'rgba(240,165,0,0.1)', borderBottom: '1px solid #30363D' }}>
-            <div className="flex items-center justify-between mb-1">
-              <div className="text-xs font-bold uppercase tracking-wider" style={{ color: '#F0A500' }}>
-                💬 SAY THIS NOW
+          {/* Transcript */}
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+            {bubbles.length === 0 && !isRecording && (
+              <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
+                <Phone className="h-10 w-10" style={{ color: '#30363D' }} />
+                <p className="text-sm" style={{ color: '#484F58' }}>
+                  Press <kbd className="px-1.5 py-0.5 rounded text-xs font-mono" style={{ background: '#21262D', color: '#8B949E', border: '1px solid #30363D' }}>Space</kbd> to start recording
+                </p>
+                <p className="text-xs" style={{ color: '#30363D' }}>
+                  Then press <kbd className="px-1.5 py-0.5 rounded text-xs font-mono" style={{ background: '#21262D', color: '#8B949E', border: '1px solid #30363D' }}>C</kbd> when the doctor speaks
+                </p>
               </div>
-              {!cueUsed && (
-                <button
-                  onClick={() => setCueUsed(true)}
-                  className="flex items-center gap-1 text-xs font-medium rounded-full px-2 py-0.5 transition-all"
-                  style={{ background: '#12201A', color: '#3FB950', border: '1px solid #1F5231' }}>
-                  <Check style={{ width: 10, height: 10 }} /> Used
-                </button>
-              )}
-              {cueUsed && (
-                <span className="text-xs" style={{ color: '#3FB950' }}>✓ Used</span>
-              )}
-            </div>
-            <p className="font-semibold text-sm" style={{ color: '#F0F6FC' }}>"{currentCue.say}"</p>
-          </div>
-          <div className="px-4 py-3" style={{ background: 'rgba(0,180,216,0.06)', borderBottom: '1px solid #30363D' }}>
-            <div className="text-xs font-semibold mb-1" style={{ color: '#00B4D8' }}>📊 EVIDENCE</div>
-            <p className="text-sm" style={{ color: '#C9D1D9' }}>{currentCue.evidence}</p>
-          </div>
-          <div className="px-4 py-3" style={{ borderBottom: '1px solid #30363D' }}>
-            <div className="text-xs font-semibold mb-1" style={{ color: '#8B949E' }}>❓ BRIDGE</div>
-            <p className="text-sm" style={{ color: '#C9D1D9' }}>"{currentCue.next}"</p>
-          </div>
-          <div className="px-4 py-2.5 flex items-center gap-2">
-            <div className="flex gap-1">
-              {[1,2,3,4,5].map(i => (
-                <div key={i} className="h-2 w-2 rounded-full"
-                  style={{ background: i <= currentCue.moodDots ? currentCue.moodColor : '#1C2333' }} />
-              ))}
-            </div>
-            <span className="text-xs font-semibold" style={{ color: currentCue.moodColor }}>
-              {currentCue.mood.toUpperCase()}
-            </span>
+            )}
+
+            {bubbles.map(b => (
+              <div
+                key={b.id}
+                className={`flex ${b.speaker === 'advisor' ? 'justify-end' : b.speaker === 'system' ? 'justify-center' : 'justify-start'}`}
+              >
+                {b.speaker === 'system' ? (
+                  <span className="text-xs px-3 py-1 rounded-full" style={{ background: '#1C2333', color: '#484F58' }}>
+                    {b.text}
+                  </span>
+                ) : (
+                  <div
+                    className="max-w-[70%] rounded-2xl px-4 py-2.5"
+                    style={{
+                      background: b.speaker === 'customer' ? '#161B22' : '#1A2236',
+                      border: `1px solid ${b.speaker === 'customer' ? '#30363D' : 'rgba(88,166,255,0.2)'}`,
+                    }}
+                  >
+                    <div className="text-xs mb-1 font-medium" style={{ color: b.speaker === 'customer' ? '#3FB950' : '#58A6FF' }}>
+                      {b.speaker === 'customer' ? '🩺 Doctor' : '👤 Advisor'}
+                    </div>
+                    <p className="text-sm leading-snug" style={{ color: '#E6EDF3' }}>{b.text}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* Interim text */}
+            {interimText && (
+              <div className="flex justify-start">
+                <div
+                  className="max-w-[70%] rounded-2xl px-4 py-2.5"
+                  style={{ background: '#0D1117', border: '1px dashed #30363D' }}
+                >
+                  <div className="text-xs mb-1" style={{ color: '#484F58' }}>
+                    {customerSpeaking ? '🩺 Doctor' : '👤 Advisor'} (interim)
+                  </div>
+                  <p className="text-sm" style={{ color: '#484F58', fontStyle: 'italic' }}>{interimText}</p>
+                </div>
+              </div>
+            )}
+
+            <div ref={transcriptEndRef} />
           </div>
         </div>
-      )}
 
-      {/* Call log — collapsed by default */}
-      {isLive && callLog.length > 0 && (
-        <div className="rounded-[10px] border" style={{ background: '#161B22', borderColor: '#30363D' }}>
-          <button
-            onClick={() => setLogExpanded(e => !e)}
-            className="w-full px-4 py-2.5 flex items-center justify-between text-xs font-semibold uppercase tracking-wider"
-            style={{ color: '#484F58' }}>
-            <span>Call Log ({callLog.length})</span>
-            {logExpanded
-              ? <ChevronUp style={{ width: 14, height: 14 }} />
-              : <ChevronDown style={{ width: 14, height: 14 }} />}
-          </button>
-          {logExpanded && (
-            <div className="divide-y max-h-48 overflow-y-auto scrollbar-thin" style={{ borderColor: '#1C2333' }}>
-              {[...callLog].reverse().map((entry, i) => (
-                <div key={i} className="px-4 py-2.5 flex items-start gap-3">
-                  <span className="font-mono text-[10px] shrink-0 mt-0.5" style={{ color: '#484F58' }}>{entry.ts}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-medium mb-0.5"
-                      style={{ color: entry.speaker === 'DOCTOR' ? '#F0A500' : '#00B4D8' }}>
-                      {entry.speaker}
-                    </div>
-                    <div className="text-xs italic truncate" style={{ color: '#8B949E' }}>"{entry.text}"</div>
+        {/* ── Right: Cue Card ───────────────────────────────────────────── */}
+        <div
+          className="w-80 shrink-0 flex flex-col overflow-y-auto"
+          style={{ borderLeft: '1px solid #21262D', background: '#0D1117' }}
+        >
+          <div className="px-4 py-3" style={{ borderBottom: '1px solid #21262D' }}>
+            <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#484F58' }}>
+              Live Coaching
+            </h2>
+          </div>
+
+          {!cueCard ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-2 px-4 text-center">
+              <ChevronRight className="h-6 w-6" style={{ color: '#30363D' }} />
+              <p className="text-xs" style={{ color: '#484F58' }}>
+                Coaching guidance appears here when the doctor speaks
+              </p>
+            </div>
+          ) : (
+            <div className="p-4 space-y-4">
+
+              {/* SAY_EN */}
+              <div
+                className="rounded-xl p-4"
+                style={{ background: '#161B22', border: '1px solid #30363D' }}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#8B949E' }}>
+                    Say this
+                  </span>
+                  <button
+                    onClick={copyCard}
+                    className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-md transition-all"
+                    style={{ color: copied ? '#3FB950' : '#8B949E', background: copied ? 'rgba(63,185,80,0.1)' : 'transparent' }}
+                  >
+                    {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                    {copied ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+                <p className="text-sm leading-relaxed" style={{ color: '#F0F6FC' }}>
+                  {cueCard.say}
+                  {cueCardStreaming && <span className="inline-block w-0.5 h-3.5 ml-0.5 animate-pulse" style={{ background: '#F0A500', verticalAlign: 'middle' }} />}
+                </p>
+              </div>
+
+              {/* MOOD */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs" style={{ color: '#484F58' }}>Doctor mood:</span>
+                <span
+                  className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                  style={{ background: moodStyle.bg, color: moodStyle.color }}
+                >
+                  {cueCard.mood}
+                </span>
+              </div>
+
+              {/* NEXT_EN */}
+              {cueCard.next && (
+                <div
+                  className="rounded-xl p-3"
+                  style={{ background: 'rgba(88,166,255,0.06)', border: '1px solid rgba(88,166,255,0.15)' }}
+                >
+                  <div className="text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: '#58A6FF' }}>
+                    Next action
                   </div>
-                  <div className="flex flex-col items-end gap-0.5 shrink-0">
-                    <span className="text-[10px] font-mono" style={{ color: '#484F58' }}>{entry.tier1}</span>
-                    <span className="text-[10px] font-semibold" style={{ color: entry.moodColor }}>{entry.mood}</span>
+                  <p className="text-xs leading-relaxed" style={{ color: '#C9D1D9' }}>
+                    {cueCard.next}
+                    {cueCardStreaming && !cueCard.say && (
+                      <span className="inline-block w-0.5 h-3 ml-0.5 animate-pulse" style={{ background: '#58A6FF', verticalAlign: 'middle' }} />
+                    )}
+                  </p>
+                </div>
+              )}
+
+              {/* ALERT */}
+              {cueCard.alert && (
+                <div
+                  className="rounded-xl p-3 flex gap-2"
+                  style={{ background: 'rgba(248,81,73,0.06)', border: '1px solid rgba(248,81,73,0.2)' }}
+                >
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" style={{ color: '#F85149' }} />
+                  <p className="text-xs leading-relaxed" style={{ color: '#F85149' }}>{cueCard.alert}</p>
+                </div>
+              )}
+
+              {/* Scenario guidance strip */}
+              {scenarioGuidance && (
+                <div
+                  className="rounded-xl p-3 space-y-2"
+                  style={{ background: '#1C2333', border: '1px solid #30363D' }}
+                >
+                  <div className="text-xs font-semibold" style={{ color: '#F0A500' }}>
+                    {scenarioGuidance.intent}
+                  </div>
+                  <ul className="space-y-1.5">
+                    {scenarioGuidance.dataPoints.map((pt, i) => (
+                      <li key={i} className="flex items-start gap-1.5 text-xs" style={{ color: '#8B949E' }}>
+                        <span style={{ color: '#F0A500', lineHeight: '1.4rem' }}>·</span>
+                        {pt}
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="pt-1" style={{ borderTop: '1px solid #21262D' }}>
+                    <p className="text-xs italic" style={{ color: '#6E7681' }}>
+                      {scenarioGuidance.howToHandle}
+                    </p>
                   </div>
                 </div>
-              ))}
+              )}
             </div>
           )}
-        </div>
-      )}
 
-      {/* End summary */}
-      {!isLive && callLog.length > 0 && (
-        <div className="rounded-[10px] border p-5 space-y-3 fade-in"
-          style={{ background: '#161B22', borderColor: '#30363D' }}>
-          <h2 className="text-sm font-semibold" style={{ color: '#F0F6FC' }}>Call Summary</h2>
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { label: 'Duration',  value: fmtTime(elapsed) },
-              { label: 'Cue Cards', value: String(callLog.length) },
-              { label: 'Doctor',    value: selectedDoctor.persona },
-            ].map(({ label, value }) => (
-              <div key={label} className="rounded-lg px-3 py-2 text-center"
-                style={{ background: '#1C2333', border: '1px solid #30363D' }}>
-                <div className="text-sm font-bold" style={{ color: '#F0F6FC' }}>{value}</div>
-                <div className="text-xs" style={{ color: '#484F58' }}>{label}</div>
-              </div>
-            ))}
+          {/* Disclaimer */}
+          <div className="mt-auto px-4 py-3" style={{ borderTop: '1px solid #21262D' }}>
+            <p className="text-xs leading-relaxed" style={{ color: '#30363D' }}>
+              For coaching and preparation only. Final field messaging must follow approved medical, legal, and regulatory guidance.
+            </p>
           </div>
-          <div className="space-y-1">
-            {callLog.map((entry, i) => (
-              <div key={i} className="flex items-start gap-3 text-xs py-2"
-                style={{ borderBottom: '1px solid #1C2333' }}>
-                <span className="font-mono shrink-0" style={{ color: '#484F58' }}>{entry.ts}</span>
-                <span className="font-medium shrink-0" style={{ color: entry.speaker === 'DOCTOR' ? '#F0A500' : '#00B4D8' }}>
-                  {entry.speaker}
-                </span>
-                <span className="italic flex-1 truncate" style={{ color: '#8B949E' }}>"{entry.text}"</span>
-                <span className="font-medium shrink-0" style={{ color: entry.moodColor }}>{entry.mood}</span>
-              </div>
-            ))}
-          </div>
-          <button
-            onClick={() => { setCallLog([]); setElapsed(0); setCurrentCue(null); setCurrentText('') }}
-            className="text-xs" style={{ color: '#F0A500' }}>
-            Clear &amp; Start New →
-          </button>
         </div>
-      )}
+
+      </div>
     </div>
   )
 }

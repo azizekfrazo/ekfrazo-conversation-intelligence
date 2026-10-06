@@ -11,6 +11,7 @@ import PostCallAnalysisPage from './pages/PostCallAnalysisPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import LiveCallPage from './pages/LiveCallPage'
 import AdminDashboardPage from './pages/AdminDashboardPage'
+import FollowUpsPage from './pages/FollowUpsPage'
 import NotFoundPage from './pages/NotFoundPage'
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -40,6 +41,7 @@ export default function App() {
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="livecall" element={<LiveCallPage />} />
           <Route path="admin" element={<AdminDashboardPage />} />
+          <Route path="follow-ups" element={<FollowUpsPage />} />
         </Route>
         <Route
           path="/doctors/:id/simulator"

@@ -7,11 +7,18 @@ import { buildSimulatorSystemPrompt, Difficulty, ObjectionType } from '../prompt
 import OpenAI from 'openai'
 
 const router = Router()
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+
+// Lazy OpenAI — prevents crash at module load when OPENAI_API_KEY is absent
+let _openai: OpenAI | null = null
+function getOpenAI(): OpenAI | null {
+  if (!process.env.OPENAI_API_KEY) return null
+  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  return _openai
+}
 
 const CreateSessionSchema = z.object({
   doctorId: z.string(),
-  userId: z.string(),
+  userId: z.string().optional(),
   difficulty: z.enum(['Easy', 'Medium', 'Hard']),
   objectionFocus: z.enum(['Efficacy', 'Safety', 'SideEffects', 'Cost', 'CompetitorComparison', 'PatientAdherence']),
 })
@@ -33,44 +40,59 @@ const ChatReplySchema = z.object({
 })
 
 // ─── Demo personas ────────────────────────────────────────────────────────────
-const PERSONAS: Record<string, { system_prompt: string }> = {
-  'dr-priya-mehta': {
-    system_prompt: `You are Dr. Priya Mehta, Diabetologist. You are in a SCRIPTED DEMO MODE.
-
-CRITICAL: You must respond to the rep's input by following this EXACT sequence — one response per turn, in this exact order, no matter what the rep says:
-
-TURN 1 — ANY opening message from the rep:
-Respond with: "Good morning. You have 5 minutes. What's your key message?"
-
-TURN 2 — Rep mentions Glycomet GP or any product data:
-Respond with: "I've been using Galvus for 3 years and my patients do well on it. What makes yours better?"
-
-TURN 3 — Rep mentions STRIDE-India or any study or data:
-Respond with: "Is that Indian patient data? My patients are South Asian — western studies don't always apply to them."
-
-TURN 4 — Rep mentions Indian patients, STRIDE, or study numbers:
-Respond with: "My patients can't afford branded medicines. What does this cost them out of pocket?"
-
-TURN 5 — Rep mentions PSP, ₹299, Patient Support, or cost:
-Respond with: "That's actually more affordable than I expected. Leave me 10 samples and the study reprint. I'll try it for 3 patients next week."
-
-RULES:
-- Follow the sequence strictly by TURN NUMBER, not by what the rep says
-- Keep every response to exactly 1-2 sentences
-- Sound like a real, slightly impatient senior doctor — professional but direct
-- Never break character, never mention AI, never say you are following a script
-- Use the TURN NUMBER (1st message = Turn 1, 2nd = Turn 2, etc.) to decide your response`,
-  },
+const SCRIPTED_TURNS: Record<string, string[]> = {
+  'dr-priya-mehta': [
+    "Good morning. You have 5 minutes. What's your key message?",
+    "I've been using Galvus for 3 years and my patients do well on it. What makes yours better?",
+    "Is that Indian patient data? My patients are South Asian — western studies don't always apply to them.",
+    "My patients can't afford branded medicines. What does this cost them out of pocket?",
+    "That's actually more affordable than I expected. Leave me 10 samples and the study reprint. I'll try it for 3 patients next week.",
+  ],
 }
 
-const SCRIPTED_TURNS: Record<string, string[]> = {}
-SCRIPTED_TURNS['dr-priya-mehta'] = [
-  "Good morning. You have 5 minutes. What's your key message?",
-  "I've been using Galvus for 3 years and my patients do well on it. What makes yours better?",
-  "Is that Indian patient data? My patients are South Asian — western studies don't always apply to them.",
-  "My patients can't afford branded medicines. What does this cost them out of pocket?",
-  "That's actually more affordable than I expected. Leave me 10 samples and the study reprint. I'll try it for 3 patients next week.",
-]
+// ─── Heuristic report when no OpenAI key ─────────────────────────────────────
+function buildHeuristicReport(turns: { role: string; content: string }[], difficulty: string) {
+  const repTurns = turns.filter((t) => t.role === 'rep' && t.content !== '[SESSION_INIT]')
+  const n = repTurns.length
+  const base = difficulty === 'Hard' ? 60 : difficulty === 'Medium' ? 67 : 74
+  const bonus = Math.min(20, n * 4)
+  const oh = Math.min(94, base + bonus)
+  const cl = Math.min(94, base + 5 + bonus)
+  const co = Math.min(94, base - 2 + bonus)
+  const cm = Math.min(95, 78 + Math.floor(bonus / 2))
+
+  return {
+    summary: `${n} rep exchange${n !== 1 ? 's' : ''} completed. ${n >= 4 ? 'Good engagement — the doctor challenged on multiple fronts.' : 'Short session — aim for 4+ exchanges to build fluency.'}`,
+    strengths: JSON.stringify([
+      'Maintained professional tone throughout the session',
+      n >= 3 ? 'Responded directly to doctor concerns without losing composure' : 'Showed willingness to engage with the doctor',
+    ]),
+    weakMoments: JSON.stringify([
+      'Could reference more specific clinical trial data by name',
+      'Closing lacked a concrete, confirmed next step',
+    ]),
+    missedOpportunities: JSON.stringify([
+      'Patient Support Programme details not introduced',
+      'Head-to-head comparative data not highlighted',
+    ]),
+    objectionHandlingScore: oh,
+    clarityScore: cl,
+    confidenceScore: co,
+    complianceScore: cm,
+    improvements: JSON.stringify([
+      'Prepare 2-3 named trial data points before the meeting',
+      'Ask about patient demographics earlier in the call',
+      'Close each objection with a summary before moving on',
+    ]),
+    nextPractice: JSON.stringify([
+      'Try a Hard difficulty session with the same doctor',
+      'Focus a session on cost + competitor combined objection',
+      'Practice the full call arc from greeting through close',
+    ]),
+  }
+}
+
+// ─── Routes ───────────────────────────────────────────────────────────────────
 
 router.post(
   '/session',
@@ -81,8 +103,29 @@ router.post(
       return
     }
 
+    const { doctorId, userId, difficulty, objectionFocus } = parsed.data
+
+    // Verify doctor exists
+    const doctor = await prisma.doctorProfile.findUnique({ where: { id: doctorId } })
+    if (!doctor) {
+      res.status(404).json({ success: false, error: 'Doctor not found' })
+      return
+    }
+
+    // Resolve userId — fall back to first user if not provided or not found
+    let resolvedUserId = userId
+      ? (await prisma.user.findUnique({ where: { id: userId } }))?.id
+      : undefined
+    if (!resolvedUserId) {
+      resolvedUserId = (await prisma.user.findFirst())?.id
+    }
+    if (!resolvedUserId) {
+      res.status(500).json({ success: false, error: 'No user found in database' })
+      return
+    }
+
     const session = await prisma.practiceSession.create({
-      data: parsed.data,
+      data: { doctorId, userId: resolvedUserId, difficulty, objectionFocus },
     })
 
     res.status(201).json({ success: true, session })
@@ -138,18 +181,33 @@ router.post(
       where: { sessionId: req.params.id },
     })
 
+    const formatReport = (r: typeof existingReport & NonNullable<unknown>) => ({
+      ...r,
+      strengths: JSON.parse(r!.strengths),
+      weakMoments: JSON.parse(r!.weakMoments),
+      missedOpportunities: JSON.parse(r!.missedOpportunities),
+      improvements: JSON.parse(r!.improvements),
+      nextPractice: JSON.parse(r!.nextPractice),
+      overallScore: Math.round(
+        (r!.objectionHandlingScore + r!.clarityScore + r!.confidenceScore + r!.complianceScore) / 4,
+      ),
+    })
+
     if (existingReport) {
-      res.json({
-        success: true,
-        report: {
-          ...existingReport,
-          strengths: JSON.parse(existingReport.strengths),
-          weakMoments: JSON.parse(existingReport.weakMoments),
-          missedOpportunities: JSON.parse(existingReport.missedOpportunities),
-          improvements: JSON.parse(existingReport.improvements),
-          nextPractice: JSON.parse(existingReport.nextPractice),
-        },
+      res.json({ success: true, report: formatReport(existingReport) })
+      return
+    }
+
+    const openai = getOpenAI()
+
+    // Heuristic fallback when no OpenAI key
+    if (!openai) {
+      const turns = session.turns.map((t) => ({ role: t.role, content: t.content }))
+      const data = buildHeuristicReport(turns, session.difficulty)
+      const report = await prisma.practiceReport.create({
+        data: { ...data, sessionId: req.params.id },
       })
+      res.json({ success: true, report: formatReport(report) })
       return
     }
 
@@ -204,17 +262,7 @@ router.post(
       },
     })
 
-    res.json({
-      success: true,
-      report: {
-        ...report,
-        strengths: JSON.parse(report.strengths),
-        weakMoments: JSON.parse(report.weakMoments),
-        missedOpportunities: JSON.parse(report.missedOpportunities),
-        improvements: JSON.parse(report.improvements),
-        nextPractice: JSON.parse(report.nextPractice),
-      },
-    })
+    res.json({ success: true, report: formatReport(report) })
   }),
 )
 
@@ -242,6 +290,10 @@ router.get(
               missedOpportunities: JSON.parse(s.report.missedOpportunities),
               improvements: JSON.parse(s.report.improvements),
               nextPractice: JSON.parse(s.report.nextPractice),
+              overallScore: Math.round(
+                (s.report.objectionHandlingScore + s.report.clarityScore +
+                  s.report.confidenceScore + s.report.complianceScore) / 4,
+              ),
             }
           : null,
       })),
@@ -271,26 +323,30 @@ router.post(
     const { repMessage, history } = parsed.data
     const doctor = session.doctor
 
-    // Derive a lookup key from the doctor's full name, e.g. "Dr. Priya Mehta" → "dr-priya-mehta"
     const doctorKey = doctor.fullName
       .toLowerCase()
       .replace(/^dr\.\s*/, 'dr-')
       .replace(/\s+/g, '-')
 
-    // ── Scripted demo path (no OpenAI needed) ─────────────────────────────────
+    // ── Scripted demo path ─────────────────────────────────────────────────────
     const scriptedTurns = SCRIPTED_TURNS[doctorKey]
     if (scriptedTurns || !process.env.OPENAI_API_KEY) {
-      // Turn index = number of rep messages sent so far
       const turnIndex = history.filter((h) => h.role === 'rep').length
-      const turns = scriptedTurns ?? ['Thank you for sharing that.']
+      const turns = scriptedTurns ?? [
+        "Good morning. You have 5 minutes — what is your key message?",
+        "I'm listening, but I'll need to see the data before I change my current prescribing habits.",
+        "What specific patient population was studied? Western data doesn't always translate to Indian patients.",
+        "My patients struggle with affordability. What does this cost out of pocket?",
+        "That's more reasonable than I expected. Leave me some samples and the clinical summary.",
+      ]
       const doctorReply = turns[Math.min(turnIndex, turns.length - 1)]
-      console.log(`[PRACTICE] 🎭 Scripted reply | doctor=${doctor.fullName} | turn=${turnIndex + 1} | "${doctorReply.slice(0, 60)}"`)
       res.json({ success: true, doctorReply })
       return
     }
 
     // ── Live OpenAI path ───────────────────────────────────────────────────────
-    const systemPrompt = PERSONAS[doctorKey]?.system_prompt ?? buildSimulatorSystemPrompt(
+    const openai = getOpenAI()!
+    const systemPrompt = buildSimulatorSystemPrompt(
       {
         fullName: doctor.fullName,
         specialty: doctor.specialty,
@@ -321,7 +377,8 @@ router.post(
       max_tokens: 300,
     })
 
-    const doctorReply = completion.choices[0]?.message?.content?.trim() ?? 'Hmm, let me think about that.'
+    const doctorReply =
+      completion.choices[0]?.message?.content?.trim() ?? 'Hmm, let me think about that.'
 
     res.json({ success: true, doctorReply })
   }),
@@ -356,6 +413,10 @@ router.get(
               missedOpportunities: JSON.parse(session.report.missedOpportunities),
               improvements: JSON.parse(session.report.improvements),
               nextPractice: JSON.parse(session.report.nextPractice),
+              overallScore: Math.round(
+                (session.report.objectionHandlingScore + session.report.clarityScore +
+                  session.report.confidenceScore + session.report.complianceScore) / 4,
+              ),
             }
           : null,
         doctor: {

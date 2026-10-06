@@ -331,7 +331,53 @@ async function main() {
   }
   console.log(`\n✅  Post-call analyses: +${totalAnalysesAdded} added\n`)
 
-  // ── 6. Summary ────────────────────────────────────────────────────────────
+  // ── 6. Follow-Up Actions ──────────────────────────────────────────────────
+  const followUpSpecs = [
+    {
+      doctorId: 'cmqupy79o0006qx863lso91uo',  // Dr. Ananya Krishnamurti
+      tasks: [
+        { task: 'Email the NeuroShield Phase III summary paper to Dr. Krishnamurti', status: 'pending' },
+        { task: 'Schedule follow-up call to discuss migraine patient case cluster', status: 'done', completedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000) },
+      ],
+    },
+    {
+      doctorId: 'cmqupy79w0008qx869uaqeyps',  // Dr. Rajesh Mehta
+      tasks: [
+        { task: 'Share GlucoBalance cost-benefit comparison versus competitor sulfonylureas', status: 'pending' },
+        { task: 'Connect Dr. Mehta with patient access coordinator for formulary check', status: 'pending' },
+      ],
+    },
+    {
+      doctorId: 'cmqupy7a4000aqx86v918dvtj',  // Dr. Priya Sharma
+      tasks: [
+        { task: 'Send CardioGuard head-to-head trial data versus Atorvastatin 40mg', status: 'done', completedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+        { task: 'Arrange peer-to-peer webinar invitation for Dr. Sharma from the CardioGuard KOL panel', status: 'pending' },
+      ],
+    },
+  ]
+
+  let followUpCount = 0
+  for (const spec of followUpSpecs) {
+    const existing = await prisma.followUpAction.count({ where: { doctorId: spec.doctorId } })
+    if (existing > 0) {
+      console.log(`   ⏭  Follow-ups for ${spec.doctorId.slice(0, 8)}… already seeded`)
+      continue
+    }
+    for (const t of spec.tasks) {
+      await prisma.followUpAction.create({
+        data: {
+          doctorId: spec.doctorId,
+          task: t.task,
+          status: t.status,
+          completedAt: t.status === 'done' ? (t as { completedAt?: Date }).completedAt ?? new Date() : null,
+        },
+      })
+      followUpCount++
+    }
+  }
+  console.log(`\n✅  Follow-up actions: +${followUpCount} added\n`)
+
+  // ── 7. Summary ────────────────────────────────────────────────────────────
   const finalCounts = await prisma.doctorProfile.findMany({
     where: { userId: user.id },
     select: {

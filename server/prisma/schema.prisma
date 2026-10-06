@@ -49,6 +49,8 @@ model DoctorProfile {
   postCallAnalyses    PostCallAnalysis[]
   conversationThreads ConversationThread[]
   doctorNotes         Note[]
+  visitPrepSheets     VisitPrepSheet[]
+  followUpActions     FollowUpAction[]
 }
 
 model Product {
@@ -162,6 +164,7 @@ model PostCallAnalysis {
   user         User              @relation(fields: [userId], references: [id])
   transcriptId String?           @unique
   transcript   MeetingTranscript? @relation(fields: [transcriptId], references: [id])
+  followUpActions FollowUpAction[]
 }
 
 model ConversationThread {
@@ -197,4 +200,26 @@ model Note {
   doctor   DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
   userId   String
   user     User          @relation(fields: [userId], references: [id])
+}
+
+model VisitPrepSheet {
+  id        String        @id @default(cuid())
+  content   String
+  createdAt DateTime      @default(now())
+
+  doctorId  String
+  doctor    DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+}
+
+model FollowUpAction {
+  id          String            @id @default(cuid())
+  task        String
+  status      String            @default("pending")
+  createdAt   DateTime          @default(now())
+  completedAt DateTime?
+
+  doctorId   String
+  doctor     DoctorProfile     @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  analysisId String?
+  analysis   PostCallAnalysis? @relation(fields: [analysisId], references: [id])
 }

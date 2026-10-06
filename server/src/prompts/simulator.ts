@@ -79,5 +79,5 @@ ${objDesc}
 9. The product being discussed is: ${productName}
 10. After 8-10 exchanges, you may naturally signal the end of the meeting ("That's helpful, I'll need to review the data. Leave your card.")
 
-Begin the session when the rep starts speaking. Do not speak first.`
+IMPORTANT: If the rep's message is "[SESSION_INIT]", immediately begin with a realistic, challenging opening objection about ${productName} — do not wait for the rep. For all other messages, respond to what the rep actually said.`
 }

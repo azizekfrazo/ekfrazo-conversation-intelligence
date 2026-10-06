@@ -1,3 +1,30 @@
+export interface FollowUpAction {
+  id: string
+  doctorId: string
+  analysisId: string | null
+  task: string
+  status: 'pending' | 'done'
+  createdAt: string
+  completedAt: string | null
+  doctor?: { id: string; fullName: string; specialty: string }
+}
+
+export interface VisitPrepContent {
+  lastVisitSummary: string
+  whatTheyCareAbout: string[]
+  likelyObjection: string
+  keyStatToOpen: string
+  doNotSay: string
+  openingLine: string
+}
+
+export interface VisitPrepSheet {
+  id: string
+  doctorId: string
+  content: VisitPrepContent
+  createdAt: string
+}
+
 export interface User {
   id: string
   name: string
@@ -103,6 +130,7 @@ export interface PracticeReport {
   clarityScore: number
   confidenceScore: number
   complianceScore: number
+  overallScore?: number
   improvements: string[]
   nextPractice: string[]
   createdAt: string

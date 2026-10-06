@@ -60,7 +60,7 @@ router.post(
 
     try {
       const session = await openai.beta.realtime.sessions.create({
-        model: 'gpt-4o-realtime-preview',
+        model: 'gpt-4o-realtime-preview-2024-12-17',
         voice: 'shimmer',
         instructions: systemPrompt,
         input_audio_transcription: { model: 'whisper-1' },
