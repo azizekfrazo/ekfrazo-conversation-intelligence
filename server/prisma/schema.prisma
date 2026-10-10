@@ -51,6 +51,9 @@ model DoctorProfile {
   doctorNotes         Note[]
   visitPrepSheets     VisitPrepSheet[]
   followUpActions     FollowUpAction[]
+  area                String?
+  assignments         DoctorAssignment[]
+  visitRecords        VisitRecord[]
 }
 
 model Product {
@@ -222,4 +225,57 @@ model FollowUpAction {
   doctor     DoctorProfile     @relation(fields: [doctorId], references: [id], onDelete: Cascade)
   analysisId String?
   analysis   PostCallAnalysis? @relation(fields: [analysisId], references: [id])
+}
+
+model SalesRep {
+  id          String   @id @default(cuid())
+  name        String
+  email       String   @unique
+  territory   String?
+  avatarColor String   @default("#4B2A91")
+  createdAt   DateTime @default(now())
+
+  assignedDoctors DoctorAssignment[]
+  visitRecords    VisitRecord[]
+  target          RepTarget?
+}
+
+model DoctorAssignment {
+  id         String   @id @default(cuid())
+  salesRepId String
+  doctorId   String
+  area       String?
+  assignedAt DateTime @default(now())
+
+  salesRep SalesRep      @relation(fields: [salesRepId], references: [id], onDelete: Cascade)
+  doctor   DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@unique([salesRepId, doctorId])
+}
+
+model VisitRecord {
+  id         String   @id @default(cuid())
+  salesRepId String
+  doctorId   String
+  date       DateTime @default(now())
+  outcome    String
+  notes      String?
+  followUp   String?
+  latitude   Float?
+  longitude  Float?
+  createdAt  DateTime @default(now())
+
+  salesRep SalesRep      @relation(fields: [salesRepId], references: [id], onDelete: Cascade)
+  doctor   DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+}
+
+model RepTarget {
+  id                   String @id @default(cuid())
+  salesRepId           String @unique
+  dailyVisitTarget     Int    @default(5)
+  weeklyClinicTarget   Int    @default(20)
+  monthlyRevenueTarget Float  @default(500000)
+  qualityScoreTarget   Int    @default(75)
+
+  salesRep SalesRep @relation(fields: [salesRepId], references: [id], onDelete: Cascade)
 }

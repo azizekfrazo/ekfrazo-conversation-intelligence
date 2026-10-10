@@ -17,6 +17,9 @@ import callpracticeRouter from './routes/callpractice'
 import livecallRouter from './routes/livecall'
 import visitPrepRouter from './routes/visitPrep'
 import followUpsRouter from './routes/followUps'
+import salesRepsRouter from './routes/salesreps'
+import assignmentsRouter from './routes/assignments'
+import managerRouter from './routes/manager'
 
 const app = express()
 const PORT = process.env.PORT ?? 4000
@@ -44,6 +47,9 @@ app.use('/api/callpractice', callpracticeRouter)
 app.use('/api/livecall', livecallRouter)
 app.use('/api/doctors', visitPrepRouter)
 app.use('/api/follow-ups', followUpsRouter)
+app.use('/api/salesreps', salesRepsRouter)
+app.use('/api/manager', managerRouter)
+app.use('/api/assignments', assignmentsRouter)
 
 app.use(notFound)
 app.use(errorHandler)

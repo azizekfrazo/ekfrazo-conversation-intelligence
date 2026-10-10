@@ -3,17 +3,22 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   LayoutDashboard, Users, BarChart2, Settings, ShieldCheck, PhoneCall, Shield, CheckSquare,
+  ClipboardList, Stethoscope, Target, TrendingUp, UserCheck,
 } from 'lucide-react'
 import { api } from '../../lib/api'
+import { useAuth } from '../../hooks/useAuth'
 
 export function Sidebar() {
   const location = useLocation()
+  const { user } = useAuth()
+  const isManager = user?.role === 'manager'
 
   const { data: followUpData } = useQuery({
     queryKey: ['follow-ups-count'],
     queryFn: () => api.get('/api/follow-ups?status=pending').then((r) => r.data),
     retry: false,
     refetchInterval: 30000,
+    enabled: !isManager,
   })
   const pendingCount: number = followUpData?.actions?.length ?? 0
 
@@ -27,68 +32,148 @@ export function Sidebar() {
       }}
     >
       <nav className="flex flex-col items-center gap-1 flex-1 w-full px-3">
-        <NavLink to="/dashboard" className="w-full flex items-center justify-center">
-          {() => (
-            <SidebarNavIcon
-              icon={LayoutDashboard}
-              label="Dashboard"
-              active={location.pathname === '/dashboard'}
-            />
-          )}
-        </NavLink>
+        {isManager ? (
+          <>
+            {/* Manager navigation */}
+            <NavLink to="/manager/dashboard" className="w-full flex items-center justify-center">
+              {() => (
+                <SidebarNavIcon
+                  icon={LayoutDashboard}
+                  label="Manager Dashboard"
+                  active={location.pathname === '/manager/dashboard'}
+                />
+              )}
+            </NavLink>
 
-        <NavLink to="/doctors" className="w-full flex items-center justify-center">
-          {() => (
-            <SidebarNavIcon
-              icon={Users}
-              label="Doctor Profiles"
-              active={location.pathname.startsWith('/doctors')}
-            />
-          )}
-        </NavLink>
+            <NavLink to="/manager/reps" className="w-full flex items-center justify-center">
+              {() => (
+                <SidebarNavIcon
+                  icon={Users}
+                  label="My Team"
+                  active={location.pathname.startsWith('/manager/reps')}
+                />
+              )}
+            </NavLink>
 
-        <NavLink to="/follow-ups" className="w-full flex items-center justify-center">
-          {() => (
-            <SidebarNavIcon
-              icon={CheckSquare}
-              label="Follow-Ups"
-              active={location.pathname === '/follow-ups'}
-              badge={pendingCount > 0 ? pendingCount : undefined}
-            />
-          )}
-        </NavLink>
+            <NavLink to="/manager/assign" className="w-full flex items-center justify-center">
+              {() => (
+                <SidebarNavIcon
+                  icon={UserCheck}
+                  label="Assign Doctors"
+                  active={location.pathname.startsWith('/manager/assign')}
+                />
+              )}
+            </NavLink>
 
-        <div className="w-8 my-2" style={{ height: 1, background: '#30363D' }} />
+            <div className="w-8 my-2" style={{ height: 1, background: '#30363D' }} />
 
-        <NavLink to="/analytics" className="w-full flex items-center justify-center">
-          {() => (
-            <SidebarNavIcon
-              icon={BarChart2}
-              label="Analytics"
-              active={location.pathname.startsWith('/analytics')}
-            />
-          )}
-        </NavLink>
+            <NavLink to="/manager/analytics" className="w-full flex items-center justify-center">
+              {() => (
+                <SidebarNavIcon
+                  icon={TrendingUp}
+                  label="Visit Analytics"
+                  active={location.pathname.startsWith('/manager/analytics')}
+                />
+              )}
+            </NavLink>
+          </>
+        ) : (
+          <>
+            {/* Sales Rep navigation */}
+            <NavLink to="/dashboard" className="w-full flex items-center justify-center">
+              {() => (
+                <SidebarNavIcon
+                  icon={LayoutDashboard}
+                  label="Dashboard"
+                  active={location.pathname === '/dashboard'}
+                />
+              )}
+            </NavLink>
 
-        <NavLink to="/livecall" className="w-full flex items-center justify-center">
-          {() => (
-            <SidebarNavIcon
-              icon={PhoneCall}
-              label="Live Call Assist"
-              active={location.pathname.startsWith('/livecall')}
-            />
-          )}
-        </NavLink>
+            <NavLink to="/doctors" className="w-full flex items-center justify-center">
+              {() => (
+                <SidebarNavIcon
+                  icon={Stethoscope}
+                  label="Doctor Profiles"
+                  active={location.pathname.startsWith('/doctors')}
+                />
+              )}
+            </NavLink>
 
-        <NavLink to="/admin" className="w-full flex items-center justify-center">
-          {() => (
-            <SidebarNavIcon
-              icon={Shield}
-              label="Admin Dashboard"
-              active={location.pathname.startsWith('/admin')}
-            />
-          )}
-        </NavLink>
+            <NavLink to="/my-doctors" className="w-full flex items-center justify-center">
+              {() => (
+                <SidebarNavIcon
+                  icon={UserCheck}
+                  label="My Doctors"
+                  active={location.pathname === '/my-doctors'}
+                />
+              )}
+            </NavLink>
+
+            <NavLink to="/visit-log" className="w-full flex items-center justify-center">
+              {() => (
+                <SidebarNavIcon
+                  icon={ClipboardList}
+                  label="Visit Log"
+                  active={location.pathname === '/visit-log'}
+                />
+              )}
+            </NavLink>
+
+            <NavLink to="/targets" className="w-full flex items-center justify-center">
+              {() => (
+                <SidebarNavIcon
+                  icon={Target}
+                  label="My Targets"
+                  active={location.pathname === '/targets'}
+                />
+              )}
+            </NavLink>
+
+            <NavLink to="/follow-ups" className="w-full flex items-center justify-center">
+              {() => (
+                <SidebarNavIcon
+                  icon={CheckSquare}
+                  label="Follow-Ups"
+                  active={location.pathname === '/follow-ups'}
+                  badge={pendingCount > 0 ? pendingCount : undefined}
+                />
+              )}
+            </NavLink>
+
+            <div className="w-8 my-2" style={{ height: 1, background: '#30363D' }} />
+
+            <NavLink to="/analytics" className="w-full flex items-center justify-center">
+              {() => (
+                <SidebarNavIcon
+                  icon={BarChart2}
+                  label="Analytics"
+                  active={location.pathname.startsWith('/analytics')}
+                />
+              )}
+            </NavLink>
+
+            <NavLink to="/livecall" className="w-full flex items-center justify-center">
+              {() => (
+                <SidebarNavIcon
+                  icon={PhoneCall}
+                  label="Live Call Assist"
+                  active={location.pathname.startsWith('/livecall')}
+                />
+              )}
+            </NavLink>
+
+            <NavLink to="/admin" className="w-full flex items-center justify-center">
+              {() => (
+                <SidebarNavIcon
+                  icon={Shield}
+                  label="Admin Dashboard"
+                  active={location.pathname.startsWith('/admin')}
+                />
+              )}
+            </NavLink>
+          </>
+        )}
 
         <SidebarNavIcon icon={Settings} label="Settings" active={false} disabled />
       </nav>

@@ -13,10 +13,26 @@ import LiveCallPage from './pages/LiveCallPage'
 import AdminDashboardPage from './pages/AdminDashboardPage'
 import FollowUpsPage from './pages/FollowUpsPage'
 import NotFoundPage from './pages/NotFoundPage'
+// Rep enhancement pages
+import VisitLogPage from './pages/VisitLogPage'
+import MyDoctorsPage from './pages/MyDoctorsPage'
+import TargetsPage from './pages/TargetsPage'
+// Manager portal pages
+import ManagerDashboardPage from './pages/manager/ManagerDashboardPage'
+import ManagerRepDetailPage from './pages/manager/ManagerRepDetailPage'
+import AssignDoctorsPage from './pages/manager/AssignDoctorsPage'
+import VisitAnalyticsPage from './pages/manager/VisitAnalyticsPage'
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth()
   if (!isAuthenticated) return <Navigate to="/login" replace />
+  return <>{children}</>
+}
+
+function ManagerGuard({ children }: { children: React.ReactNode }) {
+  const { user, isAuthenticated } = useAuth()
+  if (!isAuthenticated) return <Navigate to="/login" replace />
+  if (user?.role !== 'manager') return <Navigate to="/dashboard" replace />
   return <>{children}</>
 }
 
@@ -25,6 +41,8 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+
+        {/* ── Sales Rep shell ── */}
         <Route
           path="/"
           element={
@@ -42,7 +60,30 @@ export default function App() {
           <Route path="livecall" element={<LiveCallPage />} />
           <Route path="admin" element={<AdminDashboardPage />} />
           <Route path="follow-ups" element={<FollowUpsPage />} />
+          {/* Rep enhancements */}
+          <Route path="visit-log" element={<VisitLogPage />} />
+          <Route path="my-doctors" element={<MyDoctorsPage />} />
+          <Route path="targets" element={<TargetsPage />} />
         </Route>
+
+        {/* ── Manager portal shell ── */}
+        <Route
+          path="/manager"
+          element={
+            <ManagerGuard>
+              <AppShell />
+            </ManagerGuard>
+          }
+        >
+          <Route index element={<Navigate to="/manager/dashboard" replace />} />
+          <Route path="dashboard" element={<ManagerDashboardPage />} />
+          <Route path="reps" element={<ManagerDashboardPage />} />
+          <Route path="reps/:repId" element={<ManagerRepDetailPage />} />
+          <Route path="assign" element={<AssignDoctorsPage />} />
+          <Route path="analytics" element={<VisitAnalyticsPage />} />
+        </Route>
+
+        {/* ── Fullscreen pages (no shell) ── */}
         <Route
           path="/doctors/:id/simulator"
           element={
@@ -59,6 +100,7 @@ export default function App() {
             </AuthGuard>
           }
         />
+
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>

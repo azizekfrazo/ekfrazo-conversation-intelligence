@@ -29,8 +29,9 @@ export interface User {
   id: string
   name: string
   email: string
-  role: string
+  role: 'rep' | 'manager' | string
   territory: string | null
+  repId?: string | null
 }
 
 export type PersonaType =
@@ -60,6 +61,7 @@ export interface DoctorProfile {
   createdAt: string
   updatedAt: string
   userId: string
+  area?: string | null
   _count?: {
     battlecards: number
     practiceSessions: number
@@ -211,4 +213,81 @@ export interface TimelineEvent {
   label: string
   timestamp: string
   data: Record<string, unknown>
+}
+
+// ── Manager / Sales Rep types ──────────────────────────────────────
+
+export interface SalesRep {
+  id: string
+  name: string
+  email: string
+  territory: string | null
+  avatarColor: string
+  visitsToday: number
+  visitsThisWeek: number
+  notAvailableToday: number
+  pendingFollowUps: number
+  avgScore: number
+  status: 'Excellent' | 'On Track' | 'Behind'
+  assignedDoctorsCount: number
+  target?: RepTarget | null
+}
+
+export interface RepTarget {
+  id: string
+  salesRepId: string
+  dailyVisitTarget: number
+  weeklyClinicTarget: number
+  monthlyRevenueTarget: number
+  qualityScoreTarget: number
+}
+
+export interface VisitRecord {
+  id: string
+  salesRepId: string
+  doctorId: string
+  date: string
+  outcome: 'visited_offline' | 'visited_online' | 'not_available' | 'rescheduled'
+  notes: string | null
+  followUp: string | null
+  latitude: number | null
+  longitude: number | null
+  createdAt: string
+  doctor?: { id: string; fullName: string; specialty: string; hospitalOrClinic: string | null }
+}
+
+export interface DoctorAssignment {
+  id: string
+  salesRepId: string
+  doctorId: string
+  area: string | null
+  assignedAt: string
+  salesRep?: { id: string; name: string; territory: string | null; avatarColor: string }
+  doctor?: { id: string; fullName: string; specialty: string; hospitalOrClinic: string | null; area: string | null }
+  lastVisit?: string | null
+  lastOutcome?: string | null
+}
+
+export interface ManagerOverview {
+  totalReps: number
+  totalAssignedClinics: number
+  visitsToday: number
+  visitsThisWeek: number
+  avgQualityScore: number
+  notAvailableToday: number
+  repBreakdown: RepBreakdown[]
+}
+
+export interface RepBreakdown {
+  repId: string
+  name: string
+  territory: string | null
+  avatarColor: string
+  visitsToday: number
+  visitsThisWeek: number
+  score: number
+  pendingFollowUps: number
+  assignedDoctors: number
+  coverage: number
+  status: string
 }
