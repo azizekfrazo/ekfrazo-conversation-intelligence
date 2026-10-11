@@ -22,7 +22,7 @@ export default function AssignDoctorsPage() {
 
   const { data: doctors } = useQuery<DoctorProfile[]>({
     queryKey: ['doctors'],
-    queryFn: () => api.get('/api/doctors').then((r) => r.data),
+    queryFn: () => api.get('/api/doctors').then((r) => r.data.doctors ?? r.data),
   })
 
   const assignMutation = useMutation({

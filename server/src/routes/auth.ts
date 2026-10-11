@@ -4,6 +4,17 @@ import { asyncHandler } from '../middleware/errorHandler'
 
 const router = Router()
 
+async function getRepId(email: string): Promise<string | null> {
+  try {
+    const reps = await prisma.$queryRaw<any[]>`
+      SELECT id FROM "SalesRep" WHERE email = ${email} LIMIT 1
+    `
+    return reps[0]?.id ?? null
+  } catch {
+    return null
+  }
+}
+
 router.post(
   '/login',
   asyncHandler(async (req, res) => {
@@ -21,6 +32,8 @@ router.post(
       return
     }
 
+    const repId = user.role === 'REP' ? await getRepId(email) : null
+
     res.json({
       success: true,
       user: {
@@ -29,6 +42,7 @@ router.post(
         email: user.email,
         role: user.role,
         territory: user.territory,
+        repId,
       },
     })
   }),
@@ -44,6 +58,8 @@ router.get(
       return
     }
 
+    const repId = await getRepId(user.email)
+
     res.json({
       success: true,
       user: {
@@ -52,6 +68,7 @@ router.get(
         email: user.email,
         role: user.role,
         territory: user.territory,
+        repId,
       },
     })
   }),

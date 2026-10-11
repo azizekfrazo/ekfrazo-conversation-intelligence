@@ -32,7 +32,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 function ManagerGuard({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated } = useAuth()
   if (!isAuthenticated) return <Navigate to="/login" replace />
-  if (user?.role !== 'manager') return <Navigate to="/dashboard" replace />
+  if (user?.role?.toLowerCase() !== 'manager') return <Navigate to="/dashboard" replace />
   return <>{children}</>
 }
 
