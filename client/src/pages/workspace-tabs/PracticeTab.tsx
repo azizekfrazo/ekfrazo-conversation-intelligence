@@ -34,7 +34,7 @@ const DEMO_DOCTORS: DemoDoctor[] = [
     id: 'dr-priya-mehta',
     name: 'Dr. Priya Mehta',
     specialty: 'Diabetologist',
-    hospital: 'Kokilaben Dhirubhai Ambani Hospital',
+    hospital: 'Manipal Hospital',
     persona: 'Evidence-Driven',
     personaClass: 'bg-[#0D2137] text-[#58A6FF] border-[#1F4C73]',
     difficulty: 'Medium',

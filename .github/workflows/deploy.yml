@@ -1,0 +1,44 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: ${{ secrets.DO_USER }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          script: |
+            set -e
+            cd /var/www/ekfrazo
+
+            echo "--- pulling latest code ---"
+            git pull origin main
+
+            echo "--- installing server deps ---"
+            cd server
+            npm install --production=false
+
+            echo "--- pushing schema + seeding demo data ---"
+            npx prisma db push
+            npx prisma db seed
+
+            echo "--- building server ---"
+            npm run build
+
+            echo "--- restarting server ---"
+            pm2 restart ekfrazo-server || pm2 start dist/index.js --name ekfrazo-server
+
+            echo "--- building frontend ---"
+            cd ../client
+            npm install
+            npm run build
+
+            echo "--- done ---"
+            curl -sf https://conversation-intelligence.thestorywallcafe.com/api/health && echo "Health check passed"

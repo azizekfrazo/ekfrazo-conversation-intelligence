@@ -1,20 +1,30 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Search, Building2, MapPin, Trash2 } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { DoctorProfile } from '../types'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { personaColors, personaLabels, doctorPhotoUrl } from '../lib/utils'
 import { DoctorFormModal } from '../components/doctors/DoctorFormModal'
 import { DEMO_DOCTORS } from '../data/demoDoctors'
+import { api } from '../lib/api'
 
 export default function DoctorsPage() {
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
 
+  const { data: apiDoctors } = useQuery<DoctorProfile[]>({
+    queryKey: ['doctors-all'],
+    queryFn: () => api.get('/api/doctors').then(r => r.data.doctors ?? []),
+    retry: false,
+  })
+
+  const baseList: DoctorProfile[] = (apiDoctors && apiDoctors.length > 0) ? apiDoctors : DEMO_DOCTORS
+
   const doctors = search.trim()
-    ? DEMO_DOCTORS.filter((d) => {
+    ? baseList.filter((d) => {
         const q = search.toLowerCase()
         return (
           d.fullName.toLowerCase().includes(q) ||
@@ -23,7 +33,7 @@ export default function DoctorsPage() {
           (d.hospitalOrClinic ?? '').toLowerCase().includes(q)
         )
       })
-    : DEMO_DOCTORS
+    : baseList
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
