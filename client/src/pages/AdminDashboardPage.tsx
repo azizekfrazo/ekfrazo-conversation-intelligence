@@ -11,8 +11,8 @@ interface Rep {
 }
 
 const REPS: Rep[] = [
-  { id:'r1', name:'Aryan Sharma',   zone:'Mumbai North', calls:47, avgScore:82, trend:+8,  streak:12, atRisk:false, topSkill:'Closing',       weakSkill:'Compliance'   },
-  { id:'r2', name:'Divya Pillai',   zone:'Mumbai South', calls:39, avgScore:74, trend:+3,  streak:5,  atRisk:false, topSkill:'Product Know.', weakSkill:'Opening'      },
+  { id:'r1', name:'Aryan Sharma',   zone:'Bengaluru North', calls:47, avgScore:82, trend:+8,  streak:12, atRisk:false, topSkill:'Closing',       weakSkill:'Compliance'   },
+  { id:'r2', name:'Divya Pillai',   zone:'Bengaluru South', calls:39, avgScore:74, trend:+3,  streak:5,  atRisk:false, topSkill:'Product Know.', weakSkill:'Opening'      },
   { id:'r3', name:'Rohan Desai',    zone:'Pune',         calls:28, avgScore:58, trend:-5,  streak:0,  atRisk:true,  topSkill:'Compliance',    weakSkill:'Objection'    },
   { id:'r4', name:'Priti Joshi',    zone:'Nashik',       calls:52, avgScore:88, trend:+12, streak:18, atRisk:false, topSkill:'Objection',     weakSkill:'—'            },
   { id:'r5', name:'Kiran Mehta',    zone:'Thane',        calls:33, avgScore:67, trend:-2,  streak:3,  atRisk:true,  topSkill:'Opening',       weakSkill:'Closing'      },

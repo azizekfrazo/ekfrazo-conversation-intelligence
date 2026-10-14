@@ -144,7 +144,7 @@ export function DoctorFormModal({ doctor, onClose, onSuccess }: Props) {
                 id="city"
                 value={form.city}
                 onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
-                placeholder="Mumbai"
+                placeholder="Bengaluru"
                 required
               />
             </div>
@@ -154,7 +154,7 @@ export function DoctorFormModal({ doctor, onClose, onSuccess }: Props) {
                 id="hospital"
                 value={form.hospitalOrClinic}
                 onChange={(e) => setForm((f) => ({ ...f, hospitalOrClinic: e.target.value }))}
-                placeholder="Apollo Hospitals, Navi Mumbai"
+                placeholder="Apollo Hospitals, Bengaluru"
               />
             </div>
             <div className="space-y-1.5">

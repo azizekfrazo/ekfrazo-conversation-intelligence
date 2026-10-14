@@ -4,14 +4,13 @@ import { prisma } from '../lib/prisma'
 const router = Router()
 
 function todayStart() {
-  const d = new Date()
-  d.setHours(0, 0, 0, 0)
-  return d.toISOString()
+  // 24-hour rolling window so demo data always appears
+  return new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 }
 
 function weekStart() {
   // rolling 7-day window so demo data always appears
-  return new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  return new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
 }
 
 // GET /api/manager/overview

@@ -41,6 +41,21 @@ router.post('/', async (req: Request, res: Response) => {
     const assignId = `assign-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const now = new Date().toISOString()
 
+    // Check if doctor is already assigned to ANY rep
+    const existingAssign = await prisma.$queryRaw<any[]>`
+      SELECT da.id, sr.name as repName FROM "DoctorAssignment" da
+      JOIN "SalesRep" sr ON da.salesRepId = sr.id
+      WHERE da.doctorId = ${doctorId}
+      LIMIT 1
+    `
+    if (existingAssign.length > 0) {
+      const assignedTo = existingAssign[0].repName
+      return res.status(409).json({
+        error: `Doctor is already assigned to ${assignedTo}. Please unassign first.`,
+        assignedTo,
+      })
+    }
+
     try {
       await prisma.$executeRaw`
         INSERT INTO "DoctorAssignment" (id, salesRepId, doctorId, area, assignedAt)

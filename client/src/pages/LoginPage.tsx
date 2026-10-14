@@ -29,7 +29,7 @@ export default function LoginPage() {
         name: 'Arjun Sharma',
         email: 'arjun@ekfrazo.demo',
         role: 'rep',
-        territory: 'Mumbai South',
+        territory: 'Bengaluru South',
         repId: arjun?.id || null,
       } as any)
     } catch {
@@ -38,7 +38,7 @@ export default function LoginPage() {
         name: 'Arjun Sharma',
         email: 'arjun@ekfrazo.demo',
         role: 'rep',
-        territory: 'Mumbai South',
+        territory: 'Bengaluru South',
       } as any)
     }
     navigate('/dashboard')
@@ -82,7 +82,7 @@ export default function LoginPage() {
 
           {/* Role selector cards */}
           <div className="space-y-4">
-            {/* Sales Rep button */}
+            {/* Sales Representative button */}
             <button
               onClick={handleRepLogin}
               className="w-full rounded-xl p-5 text-left transition-all duration-150 group"
@@ -103,10 +103,10 @@ export default function LoginPage() {
                 </div>
                 <div>
                   <div style={{ color: '#F0F6FC', fontWeight: 600, fontSize: '0.9375rem' }}>
-                    Enter as Demo Sales Rep
+                    Enter as Demo Sales Representative
                   </div>
                   <div style={{ color: '#8B949E', fontSize: '0.8125rem', marginTop: 2 }}>
-                    Arjun Sharma · Mumbai South Territory
+                    Arjun Sharma · Bengaluru South Territory
                   </div>
                 </div>
               </div>
@@ -178,7 +178,7 @@ export default function LoginPage() {
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium"
             style={{ background: 'rgba(240,165,0,0.12)', color: '#F0A500', border: '1px solid rgba(240,165,0,0.25)' }}>
             <span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: '#F0A500' }} />
-            Live team snapshot — Mumbai Region
+            Live team snapshot — Bengaluru Region
           </div>
           <div className="grid grid-cols-2 gap-3">
             {STATS.map(({ label, value, delta }) => (

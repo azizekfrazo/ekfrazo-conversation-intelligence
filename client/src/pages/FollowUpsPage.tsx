@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { CheckSquare, Clock, Check, RotateCcw, ArrowRight } from 'lucide-react'
 import { FollowUpAction } from '../types'
 import { api } from '../lib/api'
 import { formatDate } from '../lib/utils'
+import { useAuth } from '../hooks/useAuth'
 
 const DEMO_FOLLOW_UPS: FollowUpAction[] = [
   {
@@ -73,32 +74,51 @@ type Filter = 'all' | 'pending' | 'done'
 
 export default function FollowUpsPage() {
   const [filter, setFilter] = useState<Filter>('all')
-  const queryClient = useQueryClient()
 
-  const { data, isError } = useQuery({
-    queryKey: ['follow-ups', filter],
-    queryFn: () =>
-      api
-        .get(`/api/follow-ups${filter !== 'all' ? `?status=${filter}` : ''}`)
-        .then((r) => r.data),
-    retry: false,
+  const { user } = useAuth()
+  const repId = user?.id
+
+  const [doneIds, setDoneIds] = useState<Set<string>>(new Set())
+
+  const { data: visits = [] } = useQuery<any[]>({
+    queryKey: ['follow-ups-visits', repId],
+    queryFn: () => api.get(`/api/salesreps/${repId}/visits?days=60`).then(r => r.data),
+    enabled: !!repId,
+    staleTime: 60_000,
   })
 
-  const actions: FollowUpAction[] = isError || !data?.actions ? DEMO_FOLLOW_UPS : data.actions
+  const rawActions: FollowUpAction[] = visits
+    .filter((v: any) => v.followUp && v.followUp.trim())
+    .map((v: any) => ({
+      id: v.id,
+      doctorId: v.doctorId ?? v.doctor?.id ?? '',
+      analysisId: null,
+      task: v.followUp!,
+      status: doneIds.has(v.id) ? 'done' : 'pending',
+      createdAt: v.date ?? v.createdAt,
+      completedAt: doneIds.has(v.id) ? new Date().toISOString() : null,
+      doctor: v.doctor ?? null,
+    }))
+
+  const actions: FollowUpAction[] = rawActions.length ? rawActions : DEMO_FOLLOW_UPS
 
   const filtered =
     filter === 'all' ? actions : actions.filter((a) => a.status === filter)
 
   const pendingCount = actions.filter((a) => a.status === 'pending').length
 
-  const toggleMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: 'pending' | 'done' }) =>
-      api.patch(`/api/follow-ups/${id}`, { status }).then((r) => r.data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['follow-ups'] })
-      queryClient.invalidateQueries({ queryKey: ['follow-ups-count'] })
+  const toggleMutation = {
+    isPending: false,
+    variables: null as any,
+    mutate: ({ id, status }: { id: string; status: 'pending' | 'done' }) => {
+      setDoneIds(prev => {
+        const next = new Set(prev)
+        if (status === 'done') next.add(id)
+        else next.delete(id)
+        return next
+      })
     },
-  })
+  }
 
   const filterTabs: { key: Filter; label: string; count?: number }[] = [
     { key: 'all', label: 'All', count: actions.length },

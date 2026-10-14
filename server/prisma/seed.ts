@@ -178,8 +178,8 @@ async function main() {
     data: {
       fullName: 'Dr. Ananya Krishnamurti',
       specialty: 'Cardiology',
-      city: 'Mumbai',
-      hospitalOrClinic: 'Apollo Hospitals, Navi Mumbai',
+      city: 'Bengaluru',
+      hospitalOrClinic: 'Apollo Hospitals, Bengaluru',
       personaType: 'EvidenceDriven',
       seniorityLevel: 'Senior',
       therapyArea: 'Cardiology',
@@ -232,7 +232,7 @@ async function main() {
     data: {
       fullName: 'Dr. Vikram Nair',
       specialty: 'Neurology',
-      city: 'Bangalore',
+      city: 'Bengaluru',
       hospitalOrClinic: 'NIMHANS',
       personaType: 'BrandLoyal',
       seniorityLevel: 'Senior',
@@ -599,7 +599,7 @@ Arjun Kapoor
 Territory Representative — Cardiology & Metabolic
 Ekfrazo Technologies
 +91 98XXX XXXXX`,
-      crmNotes: `DOCTOR: Dr. Ananya Krishnamurti | Cardiologist | Apollo Hospitals Navi Mumbai
+      crmNotes: `DOCTOR: Dr. Ananya Krishnamurti | Cardiologist | Apollo Hospitals Bengaluru
 DATE: 15 Nov 2025 | PRODUCT: Cardovix 10mg | REP: Arjun Kapoor
 
 CALL OUTCOME: Follow-up scheduled (Thu morning)

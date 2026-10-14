@@ -80,19 +80,34 @@ export default function ManagerRepDetailPage() {
   const actuals = targetData?.actuals
   const target = targetData?.target
 
+  // Compute quick stats from visit records
+  const pendingFollowUps = (visits ?? []).filter(v => v.followUp && v.followUp.trim()).length
+  const todayStr = new Date().toDateString()
+  const notAvailableToday = (visits ?? []).filter(
+    v => v.outcome === 'not_available' && new Date(v.date).toDateString() === todayStr
+  ).length
+  // Compute status from actuals vs targets
+  const computedStatus: 'Excellent' | 'On Track' | 'Behind' = (() => {
+    if (!actuals || !target) return 'On Track'
+    const weeklyPct = target.weeklyClinicTarget > 0 ? actuals.visitsThisWeek / target.weeklyClinicTarget : 0
+    if (weeklyPct >= 0.9) return 'Excellent'
+    if (actuals.visitsToday < 3) return 'Behind'
+    return 'On Track'
+  })()
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Back + header */}
       <div>
         <button
-          onClick={() => navigate('/manager/dashboard')}
+          onClick={() => navigate('/manager/reps')}
           className="flex items-center gap-1.5 mb-4 text-sm transition-colors"
           style={{ color: '#8B949E' }}
           onMouseEnter={(e) => ((e.target as HTMLElement).style.color = '#F0F6FC')}
           onMouseLeave={(e) => ((e.target as HTMLElement).style.color = '#8B949E')}
         >
           <ArrowLeft style={{ width: 16, height: 16 }} />
-          Back to Overview
+          Back to My Team
         </button>
 
         <div className="flex items-center gap-4">
@@ -107,6 +122,9 @@ export default function ManagerRepDetailPage() {
               {rep.name}
             </h1>
             <div className="flex items-center gap-3 mt-1">
+              <span className="px-2 py-0.5 rounded text-xs font-medium" style={{ background: 'rgba(139,92,246,0.1)', color: '#A78BFA', border: '1px solid rgba(139,92,246,0.25)' }}>
+                Sales Representative
+              </span>
               {rep.territory && (
                 <span className="flex items-center gap-1 text-sm" style={{ color: '#8B949E' }}>
                   <MapPin style={{ width: 13, height: 13 }} />
@@ -116,12 +134,12 @@ export default function ManagerRepDetailPage() {
               <span
                 className="px-2 py-0.5 rounded text-xs font-medium"
                 style={{
-                  background: rep.status === 'Excellent' ? 'rgba(63,185,80,0.1)' : rep.status === 'Behind' ? 'rgba(248,113,113,0.1)' : 'rgba(240,165,0,0.1)',
-                  color: rep.status === 'Excellent' ? '#3FB950' : rep.status === 'Behind' ? '#F87171' : '#F0A500',
-                  border: `1px solid ${rep.status === 'Excellent' ? '#3FB95040' : rep.status === 'Behind' ? '#F8717140' : '#F0A50040'}`,
+                  background: computedStatus === 'Excellent' ? 'rgba(63,185,80,0.1)' : computedStatus === 'Behind' ? 'rgba(248,113,113,0.1)' : 'rgba(240,165,0,0.1)',
+                  color: computedStatus === 'Excellent' ? '#3FB950' : computedStatus === 'Behind' ? '#F87171' : '#F0A500',
+                  border: `1px solid ${computedStatus === 'Excellent' ? '#3FB95040' : computedStatus === 'Behind' ? '#F8717140' : '#F0A50040'}`,
                 }}
               >
-                {rep.status ?? 'On Track'}
+                {computedStatus}
               </span>
             </div>
           </div>
@@ -136,8 +154,7 @@ export default function ManagerRepDetailPage() {
             {target && actuals && (
               <div className="space-y-3">
                 <ProgressBar label="Daily Visits" current={actuals.visitsToday} target={target.dailyVisitTarget} />
-                <ProgressBar label="Weekly Clinics" current={actuals.uniqueClinicsThisWeek} target={target.weeklyClinicTarget} />
-                <ProgressBar label="Quality Score" current={actuals.avgScore} target={target.qualityScoreTarget} suffix="/100" />
+                <ProgressBar label="Weekly Clinics" current={actuals.visitsThisWeek} target={target.weeklyClinicTarget} />
               </div>
             )}
           </div>
@@ -146,8 +163,8 @@ export default function ManagerRepDetailPage() {
             <h3 style={{ color: '#F0F6FC', fontSize: '0.875rem', fontWeight: 600 }}>Quick Stats</h3>
             {[
               { label: 'Assigned Clinics', value: assignments?.length ?? 0 },
-              { label: 'Pending Follow-ups', value: rep.pendingFollowUps ?? 0 },
-              { label: 'Not Available Today', value: rep.notAvailableToday ?? 0 },
+              { label: 'Pending Follow-ups', value: pendingFollowUps },
+              { label: 'Quality Score', value: actuals ? `${actuals.avgScore}/100` : '—' },
             ].map(({ label, value }) => (
               <div key={label} className="flex items-center justify-between">
                 <span style={{ color: '#8B949E', fontSize: '0.8125rem' }}>{label}</span>
