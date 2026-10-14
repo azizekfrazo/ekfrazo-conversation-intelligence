@@ -18,6 +18,11 @@ async function main() {
   await prisma.doctorProfile.deleteMany()
   await prisma.product.deleteMany()
   await prisma.user.deleteMany()
+  // Manager portal tables
+  try { await prisma.visitRecord.deleteMany() } catch {}
+  try { await prisma.doctorAssignment.deleteMany() } catch {}
+  try { await prisma.repTarget.deleteMany() } catch {}
+  try { await prisma.salesRep.deleteMany() } catch {}
 
   // ─── Demo User ────────────────────────────────────────────────────────────
   const rep = await prisma.user.create({
@@ -25,10 +30,35 @@ async function main() {
       name: 'Arjun Kapoor',
       email: 'arjun.kapoor@ekfrazo.com',
       role: 'REP',
-      territory: 'West India - Cardiology & Metabolic',
+      territory: 'Bengaluru South',
     },
   })
   console.log('✅ Demo rep created')
+
+  // ─── SalesReps (Manager Portal) ────────────────────────────────────────────
+  const salesRepData = [
+    { name: 'Arjun Kapoor',  email: 'arjun@ekfrazo.demo',  territory: 'Bengaluru North',   avatarColor: '#8B5CF6' },
+    { name: 'Priya Sharma',  email: 'priya@ekfrazo.demo',  territory: 'Bengaluru South',   avatarColor: '#EC4899' },
+    { name: 'Ravi Mehta',    email: 'ravi@ekfrazo.demo',   territory: 'Bengaluru East',    avatarColor: '#F0A500' },
+    { name: 'Sunita Rao',    email: 'sunita@ekfrazo.demo', territory: 'Bengaluru West',    avatarColor: '#3FB950' },
+    { name: 'Suresh Kumar',  email: 'suresh@ekfrazo.demo', territory: 'Bengaluru Central', avatarColor: '#38BDF8' },
+  ]
+  const salesReps = await Promise.all(
+    salesRepData.map(d => prisma.salesRep.upsert({
+      where: { email: d.email },
+      update: { territory: d.territory },
+      create: d,
+    }))
+  )
+  // Create default targets for each rep
+  for (const sr of salesReps) {
+    await prisma.repTarget.upsert({
+      where: { salesRepId: sr.id },
+      update: {},
+      create: { salesRepId: sr.id, dailyVisitTarget: 5, weeklyClinicTarget: 20, monthlyRevenueTarget: 500000, qualityScoreTarget: 75 },
+    })
+  }
+  console.log(`✅ ${salesReps.length} sales reps created`)
 
   // ─── Products ─────────────────────────────────────────────────────────────
   const cardovix = await prisma.product.create({

@@ -11,14 +11,14 @@ interface Rep {
 }
 
 const REPS: Rep[] = [
-  { id:'r1', name:'Aryan Sharma',   zone:'Bengaluru North', calls:47, avgScore:82, trend:+8,  streak:12, atRisk:false, topSkill:'Closing',       weakSkill:'Compliance'   },
-  { id:'r2', name:'Divya Pillai',   zone:'Bengaluru South', calls:39, avgScore:74, trend:+3,  streak:5,  atRisk:false, topSkill:'Product Know.', weakSkill:'Opening'      },
-  { id:'r3', name:'Rohan Desai',    zone:'Pune',         calls:28, avgScore:58, trend:-5,  streak:0,  atRisk:true,  topSkill:'Compliance',    weakSkill:'Objection'    },
-  { id:'r4', name:'Priti Joshi',    zone:'Nashik',       calls:52, avgScore:88, trend:+12, streak:18, atRisk:false, topSkill:'Objection',     weakSkill:'—'            },
-  { id:'r5', name:'Kiran Mehta',    zone:'Thane',        calls:33, avgScore:67, trend:-2,  streak:3,  atRisk:true,  topSkill:'Opening',       weakSkill:'Closing'      },
-  { id:'r6', name:'Sneha Kulkarni', zone:'Aurangabad',   calls:41, avgScore:79, trend:+6,  streak:9,  atRisk:false, topSkill:'Product Know.', weakSkill:'Compliance'   },
-  { id:'r7', name:'Vijay Nambiar',  zone:'Nagpur',       calls:22, avgScore:51, trend:-8,  streak:0,  atRisk:true,  topSkill:'—',             weakSkill:'Objection'    },
-  { id:'r8', name:'Aarti Singh',    zone:'Solapur',      calls:44, avgScore:85, trend:+9,  streak:14, atRisk:false, topSkill:'Closing',       weakSkill:'Opening'      },
+  { id:'r1', name:'Aryan Sharma',   zone:'Bengaluru North',   calls:47, avgScore:82, trend:+8,  streak:12, atRisk:false, topSkill:'Closing',       weakSkill:'Compliance'   },
+  { id:'r2', name:'Divya Pillai',   zone:'Bengaluru South',   calls:39, avgScore:74, trend:+3,  streak:5,  atRisk:false, topSkill:'Product Know.', weakSkill:'Opening'      },
+  { id:'r3', name:'Rohan Desai',    zone:'Bengaluru East',    calls:28, avgScore:58, trend:-5,  streak:0,  atRisk:true,  topSkill:'Compliance',    weakSkill:'Objection'    },
+  { id:'r4', name:'Priti Joshi',    zone:'Bengaluru West',    calls:52, avgScore:88, trend:+12, streak:18, atRisk:false, topSkill:'Objection',     weakSkill:'—'            },
+  { id:'r5', name:'Kiran Mehta',    zone:'Bengaluru Central', calls:33, avgScore:67, trend:-2,  streak:3,  atRisk:true,  topSkill:'Opening',       weakSkill:'Closing'      },
+  { id:'r6', name:'Sneha Kulkarni', zone:'Bengaluru North',   calls:41, avgScore:79, trend:+6,  streak:9,  atRisk:false, topSkill:'Product Know.', weakSkill:'Compliance'   },
+  { id:'r7', name:'Vijay Nambiar',  zone:'Bengaluru South',   calls:22, avgScore:51, trend:-8,  streak:0,  atRisk:true,  topSkill:'—',             weakSkill:'Objection'    },
+  { id:'r8', name:'Aarti Singh',    zone:'Bengaluru East',    calls:44, avgScore:85, trend:+9,  streak:14, atRisk:false, topSkill:'Closing',       weakSkill:'Opening'      },
 ]
 
 // Rows: reps, Cols: Opening / ProductKnow / Objection / Closing / Compliance

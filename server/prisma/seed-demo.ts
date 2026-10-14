@@ -58,10 +58,10 @@ async function main() {
   // ── 3. Update hospital names ──────────────────────────────────────────────
   const hospitalUpdates: Array<{ id: string; name: string; hospital: string }> = [
     { id: drAnanya.id, name: 'Dr. Ananya Krishnamurti', hospital: 'Manipal Hospital, Bengaluru' },
-    { id: drPriya.id,  name: 'Dr. Priya Sharma',        hospital: 'Basavatarakam Indo American Cancer Hospital, Hyderabad' },
+    { id: drPriya.id,  name: 'Dr. Priya Sharma',        hospital: 'Basavatarakam Indo American Cancer Hospital, Bengaluru' },
     { id: drVikram.id, name: 'Dr. Vikram Nair',         hospital: 'Manipal Hospitals, Bengaluru' },
-    { id: drMeera.id,  name: 'Dr. Meera Patel',         hospital: 'Apollo Clinic, Chennai' },
-    { id: drRajesh.id, name: 'Dr. Rajesh Mehta',        hospital: 'Jehangir Hospital, Pune' },
+    { id: drMeera.id,  name: 'Dr. Meera Patel',         hospital: 'Apollo Clinic, Bengaluru' },
+    { id: drRajesh.id, name: 'Dr. Rajesh Mehta',        hospital: 'Jehangir Hospital, Bengaluru' },
   ]
   for (const { id, name, hospital } of hospitalUpdates) {
     await prisma.doctorProfile.update({ where: { id }, data: { hospitalOrClinic: hospital } })
