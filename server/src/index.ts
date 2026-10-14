@@ -20,6 +20,7 @@ import followUpsRouter from './routes/followUps'
 import salesRepsRouter from './routes/salesreps'
 import assignmentsRouter from './routes/assignments'
 import managerRouter from './routes/manager'
+import visitsRouter from './routes/visits'
 
 const app = express()
 const PORT = process.env.PORT ?? 4000
@@ -50,6 +51,7 @@ app.use('/api/follow-ups', followUpsRouter)
 app.use('/api/salesreps', salesRepsRouter)
 app.use('/api/manager', managerRouter)
 app.use('/api/assignments', assignmentsRouter)
+app.use('/api/visits', visitsRouter)
 
 app.use(notFound)
 app.use(errorHandler)

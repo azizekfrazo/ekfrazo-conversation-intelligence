@@ -258,12 +258,21 @@ model VisitRecord {
   salesRepId String
   doctorId   String
   date       DateTime @default(now())
-  outcome    String
+  outcome    String   @default("in-progress")
   notes      String?
   followUp   String?
   latitude   Float?
   longitude  Float?
   createdAt  DateTime @default(now())
+
+  punchInTime  DateTime?
+  punchInLat   Float?
+  punchInLng   Float?
+  punchOutTime DateTime?
+  punchOutLat  Float?
+  punchOutLng  Float?
+  visitOutcome String?
+  visitStatus  String?
 
   salesRep SalesRep      @relation(fields: [salesRepId], references: [id], onDelete: Cascade)
   doctor   DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)

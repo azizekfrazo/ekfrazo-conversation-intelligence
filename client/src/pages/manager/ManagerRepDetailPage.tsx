@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, MapPin, Clock, CheckCircle2, XCircle, Calendar } from 'lucide-react'
+import { ArrowLeft, MapPin, Clock, CheckCircle2, XCircle, Calendar, Navigation } from 'lucide-react'
 import { api } from '../../lib/api'
 import type { SalesRep, VisitRecord, DoctorAssignment } from '../../types'
 
@@ -203,15 +203,27 @@ export default function ManagerRepDetailPage() {
                             <span style={{ color: '#C9D1D9', fontSize: '0.8125rem', fontWeight: 500 }}>
                               {v.doctor?.fullName ?? 'Unknown Doctor'}
                             </span>
-                            <span
-                              className="text-xs px-1.5 py-0.5 rounded"
-                              style={{
-                                background: `${OUTCOME_COLOR[v.outcome] ?? '#8B949E'}20`,
-                                color: OUTCOME_COLOR[v.outcome] ?? '#8B949E',
-                              }}
-                            >
-                              {OUTCOME_LABEL[v.outcome] ?? v.outcome}
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              {v.punchInTime && (
+                                <span
+                                  title={`Punched in at ${new Date(v.punchInTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}${v.punchInLat ? ` · GPS: ${v.punchInLat.toFixed(4)}, ${v.punchInLng?.toFixed(4)}` : ''}`}
+                                  className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs cursor-default"
+                                  style={{ background: 'rgba(63,185,80,0.1)', color: '#3FB950', border: '1px solid rgba(63,185,80,0.25)' }}
+                                >
+                                  <Navigation style={{ width: 9, height: 9 }} />
+                                  {new Date(v.punchInTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              )}
+                              <span
+                                className="text-xs px-1.5 py-0.5 rounded"
+                                style={{
+                                  background: `${OUTCOME_COLOR[v.outcome] ?? '#8B949E'}20`,
+                                  color: OUTCOME_COLOR[v.outcome] ?? '#8B949E',
+                                }}
+                              >
+                                {OUTCOME_LABEL[v.outcome] ?? v.outcome}
+                              </span>
+                            </div>
                           </div>
                           {v.notes && (
                             <p className="mt-1.5 text-xs" style={{ color: '#6E7681' }}>{v.notes}</p>

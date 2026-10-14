@@ -247,11 +247,17 @@ export interface VisitRecord {
   salesRepId: string
   doctorId: string
   date: string
-  outcome: 'visited_offline' | 'visited_online' | 'not_available' | 'rescheduled'
+  outcome: 'visited_offline' | 'visited_online' | 'not_available' | 'rescheduled' | 'in-progress' | string
   notes: string | null
   followUp: string | null
   latitude: number | null
   longitude: number | null
+  punchInTime: string | null
+  punchInLat: number | null
+  punchInLng: number | null
+  punchOutTime: string | null
+  visitOutcome: 'completed' | 'not-available' | null
+  visitStatus: 'in-progress' | 'done' | null
   createdAt: string
   doctor?: { id: string; fullName: string; specialty: string; hospitalOrClinic: string | null }
 }

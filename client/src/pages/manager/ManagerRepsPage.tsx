@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { api } from '../../lib/api'
 import { DEMO_DOCTORS } from '../../data/demoDoctors'
+import { DoctorFormModal } from '../../components/doctors/DoctorFormModal'
 
 interface RepTarget {
   dailyVisitTarget: number
@@ -72,6 +73,8 @@ export default function ManagerRepsPage() {
   const [tab, setTab] = useState<'team' | 'assign'>('team')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'Excellent' | 'On Track' | 'Behind'>('all')
+  const [showNewDoctor, setShowNewDoctor] = useState(false)
+  const queryClient = useQueryClient()
 
   const { data, isLoading } = useQuery<SalesRep[]>({
     queryKey: ['salesreps-list'],
@@ -106,7 +109,27 @@ export default function ManagerRepsPage() {
             Sales Representatives · Performance &amp; Doctor Assignments
           </p>
         </div>
+        <button
+          onClick={() => setShowNewDoctor(true)}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all"
+          style={{ background: '#F0A500', color: '#0D1117' }}
+          onMouseEnter={e => ((e.currentTarget as HTMLElement).style.background = '#D4920A')}
+          onMouseLeave={e => ((e.currentTarget as HTMLElement).style.background = '#F0A500')}
+        >
+          <Plus style={{ width: 15, height: 15 }} />
+          New Doctor
+        </button>
       </div>
+
+      {showNewDoctor && (
+        <DoctorFormModal
+          onClose={() => setShowNewDoctor(false)}
+          onSuccess={() => {
+            setShowNewDoctor(false)
+            queryClient.invalidateQueries({ queryKey: ['doctors-all'] })
+          }}
+        />
+      )}
 
       {/* Tab bar */}
       <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: '#161B22', border: '1px solid #30363D', width: 'fit-content' }}>

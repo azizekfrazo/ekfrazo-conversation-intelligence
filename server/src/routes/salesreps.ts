@@ -150,6 +150,12 @@ router.get('/:id/visits', async (req: Request, res: Response) => {
       followUp: v.followUp,
       latitude: v.latitude,
       longitude: v.longitude,
+      punchInTime: v.punchInTime ?? null,
+      punchInLat: v.punchInLat ?? null,
+      punchInLng: v.punchInLng ?? null,
+      punchOutTime: v.punchOutTime ?? null,
+      visitOutcome: v.visitOutcome ?? null,
+      visitStatus: v.visitStatus ?? null,
       createdAt: v.createdAt,
       doctor: { id: v.doctorId, fullName: v.fullName, specialty: v.specialty, hospitalOrClinic: v.hospitalOrClinic },
     }))

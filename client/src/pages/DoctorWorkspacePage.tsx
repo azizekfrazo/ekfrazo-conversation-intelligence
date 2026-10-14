@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Building2, MapPin, Pencil, FileText, Mic, Phone,
-  Clock, MessageSquare, StickyNote,
+  Clock, MessageSquare, StickyNote, Navigation, CheckCircle2, XCircle, Loader2,
 } from 'lucide-react'
 import { api } from '../lib/api'
 import { DoctorProfile } from '../types'
@@ -18,6 +18,7 @@ import { PostCallTab } from './workspace-tabs/PostCallTab'
 import { NotesTab } from './workspace-tabs/NotesTab'
 import { TimelinePanel } from '../components/timeline/TimelinePanel'
 import { DEMO_DOCTORS } from '../data/demoDoctors'
+import { getStoredUser } from '../lib/auth'
 
 const tabs = [
   { id: 'overview',    label: 'Overview',    icon: Clock },
@@ -28,6 +29,27 @@ const tabs = [
   { id: 'history',    label: 'History',     icon: MessageSquare },
 ]
 
+interface ActiveVisit { visitId: string; punchInTime: number }
+
+function formatElapsed(seconds: number) {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = seconds % 60
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+async function captureGPS(): Promise<{ lat: number | null; lng: number | null }> {
+  try {
+    const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+      navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 6000 })
+    )
+    return { lat: pos.coords.latitude, lng: pos.coords.longitude }
+  } catch {
+    return { lat: null, lng: null }
+  }
+}
+
 export default function DoctorWorkspacePage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -36,6 +58,71 @@ export default function DoctorWorkspacePage() {
   const qc = useQueryClient()
 
   const activeTab = searchParams.get('tab') ?? 'overview'
+
+  // ── Visit tracker state ──────────────────────────────────────────────────────
+  const [activeVisit, setActiveVisit] = useState<ActiveVisit | null>(null)
+  const [elapsed, setElapsed] = useState(0)
+  const [visitLoading, setVisitLoading] = useState(false)
+  const [showEndPanel, setShowEndPanel] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    if (!id) return
+    const saved = localStorage.getItem(`visit_${id}`)
+    if (saved) {
+      try {
+        const data: ActiveVisit = JSON.parse(saved)
+        setActiveVisit(data)
+        setElapsed(Math.floor((Date.now() - data.punchInTime) / 1000))
+      } catch { localStorage.removeItem(`visit_${id}`) }
+    }
+  }, [id])
+
+  useEffect(() => {
+    if (activeVisit) {
+      timerRef.current = setInterval(() => {
+        setElapsed(Math.floor((Date.now() - activeVisit.punchInTime) / 1000))
+      }, 1000)
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+  }, [activeVisit])
+
+  const handleStartVisit = async () => {
+    if (!id) return
+    setVisitLoading(true)
+    try {
+      const user = getStoredUser()
+      const repId = (user as any)?.repId ?? user?.id ?? 'demo-rep'
+      const { lat, lng } = await captureGPS()
+      const res = await api.post('/api/visits/punch-in', { doctorId: id, repId, lat, lng })
+      const data: ActiveVisit = { visitId: res.data.visitId, punchInTime: Date.now() }
+      setActiveVisit(data)
+      setElapsed(0)
+      setShowEndPanel(false)
+      localStorage.setItem(`visit_${id}`, JSON.stringify(data))
+    } catch (err) {
+      console.error('Punch-in failed', err)
+    } finally {
+      setVisitLoading(false)
+    }
+  }
+
+  const handleEndVisit = async (outcome: 'completed' | 'not-available') => {
+    if (!activeVisit || !id) return
+    setVisitLoading(true)
+    try {
+      const { lat, lng } = await captureGPS()
+      await api.post('/api/visits/punch-out', { visitId: activeVisit.visitId, lat, lng, outcome })
+      setActiveVisit(null)
+      setElapsed(0)
+      setShowEndPanel(false)
+      localStorage.removeItem(`visit_${id}`)
+    } catch (err) {
+      console.error('Punch-out failed', err)
+    } finally {
+      setVisitLoading(false)
+    }
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ['doctor', id],
@@ -148,6 +235,60 @@ export default function DoctorWorkspacePage() {
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            {!activeVisit ? (
+              <button
+                onClick={handleStartVisit}
+                disabled={visitLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                style={{ background: 'rgba(63,185,80,0.15)', color: '#3FB950', border: '1px solid rgba(63,185,80,0.3)' }}
+                title="Record GPS location and start this visit"
+              >
+                {visitLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Navigation className="h-3.5 w-3.5" />}
+                Start Visit
+              </button>
+            ) : (
+              <div className="relative">
+                <button
+                  onClick={() => setShowEndPanel(v => !v)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  style={{ background: 'rgba(63,185,80,0.2)', color: '#3FB950', border: '1px solid rgba(63,185,80,0.4)' }}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: '#3FB950' }} />
+                  {formatElapsed(elapsed)}
+                  {' '}· End Visit
+                </button>
+                {showEndPanel && (
+                  <div
+                    className="absolute right-0 top-full mt-1.5 rounded-xl shadow-xl z-50 overflow-hidden"
+                    style={{ background: '#1C2128', border: '1px solid #30363D', minWidth: 200 }}
+                  >
+                    <div className="px-3 py-2" style={{ borderBottom: '1px solid #21262D' }}>
+                      <p style={{ color: '#8B949E', fontSize: '0.75rem' }}>How did the visit go?</p>
+                    </div>
+                    <button
+                      onClick={() => handleEndVisit('completed')}
+                      disabled={visitLoading}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 text-sm transition-all"
+                      style={{ color: '#3FB950' }}
+                      onMouseEnter={e => ((e.currentTarget as HTMLElement).style.background = 'rgba(63,185,80,0.08)')}
+                      onMouseLeave={e => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
+                    >
+                      <CheckCircle2 className="h-4 w-4" /> Completed
+                    </button>
+                    <button
+                      onClick={() => handleEndVisit('not-available')}
+                      disabled={visitLoading}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 text-sm transition-all"
+                      style={{ color: '#F87171' }}
+                      onMouseEnter={e => ((e.currentTarget as HTMLElement).style.background = 'rgba(248,113,113,0.08)')}
+                      onMouseLeave={e => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
+                    >
+                      <XCircle className="h-4 w-4" /> Doctor Not Available
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             <Button
               variant="default"
               size="sm"
