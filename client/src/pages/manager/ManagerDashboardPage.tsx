@@ -44,7 +44,7 @@ export default function ManagerDashboardPage() {
     { label: 'Total Reps', value: overview.totalReps, icon: Users, color: '#8B5CF6', bg: 'rgba(139,92,246,0.1)' },
     { label: 'Visits Today', value: overview.visitsToday, icon: Activity, color: '#3FB950', bg: 'rgba(63,185,80,0.1)' },
     { label: 'Visits This Week', value: overview.visitsThisWeek, icon: BarChart2, color: '#F0A500', bg: 'rgba(240,165,0,0.1)' },
-    { label: 'Avg Quality Score', value: `${overview.avgQualityScore}`, icon: Star, color: '#38BDF8', bg: 'rgba(56,189,248,0.1)' },
+    { label: 'Avg Productivity Score', value: `${overview.avgQualityScore}`, icon: Star, color: '#38BDF8', bg: 'rgba(56,189,248,0.1)' },
     { label: 'Assigned Clinics', value: overview.totalAssignedClinics, icon: Target, color: '#34D399', bg: 'rgba(52,211,153,0.1)' },
   ]
 
@@ -69,7 +69,7 @@ export default function ManagerDashboardPage() {
   const avg = (arr: number[]) => arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0
   const skillMatrix = [
     { skill: 'Visit Rate', value: avg(reps.map(r => Math.min(100, Math.round((r.visitsThisWeek / 20) * 100)))) },
-    { skill: 'Quality Score', value: avg(reps.map(r => r.score)) },
+    { skill: 'Productivity Score', value: avg(reps.map(r => r.score)) },
     { skill: 'Coverage', value: avg(reps.map(r => r.coverage)) },
     { skill: 'Follow-ups', value: avg(reps.map(r => Math.min(100, r.pendingFollowUps * 10))) },
     { skill: 'Consistency', value: avg(reps.map(r => r.visitsToday >= 3 ? 80 : 40)) },

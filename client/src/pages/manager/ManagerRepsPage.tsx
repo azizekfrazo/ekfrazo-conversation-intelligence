@@ -252,7 +252,7 @@ export default function ManagerRepsPage() {
                           <div>
                             <div className="flex items-center justify-between mb-1.5">
                               <span style={{ color: '#8B949E', fontSize: '0.75rem' }}><Calendar style={{ width: 11, height: 11, display: 'inline', marginRight: 4 }} />Today</span>
-                              <span style={{ color: '#C9D1D9', fontSize: '0.75rem', fontWeight: 600 }}>{rep.visitsToday} / {rep.target?.dailyVisitTarget ?? '—'}</span>
+                              <span style={{ color: '#C9D1D9', fontSize: '0.75rem', fontWeight: 600 }}>{Math.min(rep.visitsToday, rep.target?.dailyVisitTarget ?? rep.visitsToday)} / {rep.target?.dailyVisitTarget ?? '—'}</span>
                             </div>
                             <ProgressBar value={rep.visitsToday} max={rep.target?.dailyVisitTarget ?? 1} color={cfg.color} />
                             <span style={{ color: '#6E7681', fontSize: '0.7rem', marginTop: 2, display: 'block' }}>{dailyPct}% of daily target</span>
@@ -260,7 +260,7 @@ export default function ManagerRepsPage() {
                           <div>
                             <div className="flex items-center justify-between mb-1.5">
                               <span style={{ color: '#8B949E', fontSize: '0.75rem' }}><Target style={{ width: 11, height: 11, display: 'inline', marginRight: 4 }} />This week</span>
-                              <span style={{ color: '#C9D1D9', fontSize: '0.75rem', fontWeight: 600 }}>{rep.visitsThisWeek} / {rep.target?.weeklyClinicTarget ?? '—'}</span>
+                              <span style={{ color: '#C9D1D9', fontSize: '0.75rem', fontWeight: 600 }}>{Math.min(rep.visitsThisWeek, rep.target?.weeklyClinicTarget ?? rep.visitsThisWeek)} / {rep.target?.weeklyClinicTarget ?? '—'}</span>
                             </div>
                             <ProgressBar value={rep.visitsThisWeek} max={rep.target?.weeklyClinicTarget ?? 1} color={cfg.color} />
                             <span style={{ color: '#6E7681', fontSize: '0.7rem', marginTop: 2, display: 'block' }}>{weeklyPct}% of weekly target</span>
@@ -268,10 +268,10 @@ export default function ManagerRepsPage() {
                           <div>
                             <div className="flex items-center justify-between mb-1.5">
                               <span style={{ color: '#8B949E', fontSize: '0.75rem' }}><Star style={{ width: 11, height: 11, display: 'inline', marginRight: 4 }} />Avg score</span>
-                              <span style={{ color: '#C9D1D9', fontSize: '0.75rem', fontWeight: 600 }}>{rep.avgScore} / {rep.target?.qualityScoreTarget ?? 100}</span>
+                              <span style={{ color: '#C9D1D9', fontSize: '0.75rem', fontWeight: 600 }}>{Math.min(rep.avgScore, rep.target?.qualityScoreTarget ?? rep.avgScore)} / {rep.target?.qualityScoreTarget ?? 100}</span>
                             </div>
                             <ProgressBar value={rep.avgScore} max={rep.target?.qualityScoreTarget ?? 100} color={cfg.color} />
-                            <span style={{ color: '#6E7681', fontSize: '0.7rem', marginTop: 2, display: 'block' }}>Quality score</span>
+                            <span style={{ color: '#6E7681', fontSize: '0.7rem', marginTop: 2, display: 'block' }}>Productivity score</span>
                           </div>
                         </div>
                       </div>

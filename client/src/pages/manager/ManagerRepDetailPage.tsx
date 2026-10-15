@@ -1,6 +1,7 @@
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, MapPin, Clock, CheckCircle2, XCircle, Calendar, Navigation } from 'lucide-react'
+import { ArrowLeft, MapPin, Clock, CheckCircle2, XCircle, Calendar, Navigation, Filter } from 'lucide-react'
 import { api } from '../../lib/api'
 import type { SalesRep, VisitRecord, DoctorAssignment } from '../../types'
 
@@ -34,9 +35,24 @@ const OUTCOME_COLOR: Record<string, string> = {
   rescheduled: '#F0A500',
 }
 
+const FILTER_OPTIONS = ['all', 'today', 'week', 'month'] as const
+const FILTER_LABELS: Record<string, string> = { all: '14 Days', today: 'Today', week: 'This Week', month: 'This Month' }
+
+function filterByDate(dateStr: string | null | undefined, filter: string): boolean {
+  if (!dateStr) return filter === 'all'
+  const d = new Date(dateStr)
+  const now = new Date()
+  if (filter === 'today') return d.toDateString() === now.toDateString()
+  if (filter === 'week') return d >= new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+  if (filter === 'month') return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+  return true
+}
+
 export default function ManagerRepDetailPage() {
   const { repId } = useParams<{ repId: string }>()
   const navigate = useNavigate()
+  const [visitFilter, setVisitFilter] = useState<string>('all')
+  const [clinicFilter, setClinicFilter] = useState<string>('all')
 
   const { data: rep } = useQuery<SalesRep>({
     queryKey: ['rep', repId],
@@ -70,23 +86,21 @@ export default function ManagerRepDetailPage() {
     )
   }
 
+  const filteredVisits = (visits ?? []).filter((v) => filterByDate(v.date, visitFilter))
   const grouped: Record<string, VisitRecord[]> = {}
-  ;(visits ?? []).forEach((v) => {
+  filteredVisits.forEach((v) => {
     const day = new Date(v.date).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })
     if (!grouped[day]) grouped[day] = []
     grouped[day].push(v)
   })
 
+  const filteredAssignments = (assignments ?? []).filter((a) => filterByDate(a.lastVisit ?? null, clinicFilter))
+
   const actuals = targetData?.actuals
   const target = targetData?.target
 
-  // Compute quick stats from visit records
   const pendingFollowUps = (visits ?? []).filter(v => v.followUp && v.followUp.trim()).length
-  const todayStr = new Date().toDateString()
-  const notAvailableToday = (visits ?? []).filter(
-    v => v.outcome === 'not_available' && new Date(v.date).toDateString() === todayStr
-  ).length
-  // Compute status from actuals vs targets
+
   const computedStatus: 'Excellent' | 'On Track' | 'Behind' = (() => {
     if (!actuals || !target) return 'On Track'
     const weeklyPct = target.weeklyClinicTarget > 0 ? actuals.visitsThisWeek / target.weeklyClinicTarget : 0
@@ -164,7 +178,7 @@ export default function ManagerRepDetailPage() {
             {[
               { label: 'Assigned Clinics', value: assignments?.length ?? 0 },
               { label: 'Pending Follow-ups', value: pendingFollowUps },
-              { label: 'Quality Score', value: actuals ? `${actuals.avgScore}/100` : '—' },
+              { label: 'Productivity Score', value: actuals ? `${actuals.avgScore}/100` : '—' },
             ].map(({ label, value }) => (
               <div key={label} className="flex items-center justify-between">
                 <span style={{ color: '#8B949E', fontSize: '0.8125rem' }}>{label}</span>
@@ -176,13 +190,14 @@ export default function ManagerRepDetailPage() {
 
         {/* Center col: visit timeline */}
         <div className="rounded-xl overflow-hidden" style={{ background: '#161B22', border: '1px solid #30363D' }}>
-          <div className="px-4 py-3" style={{ borderBottom: '1px solid #21262D' }}>
-            <h3 style={{ color: '#F0F6FC', fontSize: '0.875rem', fontWeight: 600 }}>Visit Timeline (14 days)</h3>
+          <div className="px-4 py-3 space-y-2.5" style={{ borderBottom: '1px solid #21262D' }}>
+            <h3 style={{ color: '#F0F6FC', fontSize: '0.875rem', fontWeight: 600 }}>Visit Timeline</h3>
+            <FilterBar value={visitFilter} onChange={setVisitFilter} />
           </div>
           <div className="overflow-y-auto" style={{ maxHeight: 480 }}>
             {Object.keys(grouped).length === 0 ? (
               <div className="flex items-center justify-center h-32 text-sm" style={{ color: '#6E7681' }}>
-                No visits recorded
+                {(visits ?? []).length > 0 ? 'No visits in this period' : 'No visits recorded'}
               </div>
             ) : (
               <div className="p-4 space-y-4">
@@ -225,8 +240,18 @@ export default function ManagerRepDetailPage() {
                               </span>
                             </div>
                           </div>
+                          {v.preNotes && (
+                            <p className="mt-1.5 text-xs px-2 py-1 rounded" style={{ color: '#8B949E', background: 'rgba(240,165,0,0.06)', borderLeft: '2px solid rgba(240,165,0,0.25)' }}>
+                              <span style={{ color: '#F0A500', fontWeight: 600 }}>Pre: </span>{v.preNotes}
+                            </p>
+                          )}
                           {v.notes && (
                             <p className="mt-1.5 text-xs" style={{ color: '#6E7681' }}>{v.notes}</p>
+                          )}
+                          {v.postNotes && (
+                            <p className="mt-1.5 text-xs px-2 py-1 rounded" style={{ color: '#8B949E', background: 'rgba(56,189,248,0.06)', borderLeft: '2px solid rgba(56,189,248,0.25)' }}>
+                              <span style={{ color: '#38BDF8', fontWeight: 600 }}>Post: </span>{v.postNotes}
+                            </p>
                           )}
                           {v.followUp && (
                             <div className="mt-1.5 flex items-center gap-1.5">
@@ -246,19 +271,24 @@ export default function ManagerRepDetailPage() {
 
         {/* Right col: assigned doctors */}
         <div className="rounded-xl overflow-hidden" style={{ background: '#161B22', border: '1px solid #30363D' }}>
-          <div className="px-4 py-3" style={{ borderBottom: '1px solid #21262D' }}>
+          <div className="px-4 py-3 space-y-2.5" style={{ borderBottom: '1px solid #21262D' }}>
             <h3 style={{ color: '#F0F6FC', fontSize: '0.875rem', fontWeight: 600 }}>
               Assigned Clinics ({assignments?.length ?? 0})
             </h3>
+            <FilterBar value={clinicFilter} onChange={setClinicFilter} />
           </div>
           <div className="overflow-y-auto" style={{ maxHeight: 480 }}>
             {!assignments?.length ? (
               <div className="flex items-center justify-center h-32 text-sm" style={{ color: '#6E7681' }}>
                 No doctors assigned
               </div>
+            ) : filteredAssignments.length === 0 ? (
+              <div className="flex items-center justify-center h-32 text-sm" style={{ color: '#6E7681' }}>
+                No visits in this period
+              </div>
             ) : (
               <div className="divide-y" style={{ borderColor: '#21262D' }}>
-                {assignments.map((a) => (
+                {filteredAssignments.map((a) => (
                   <div key={a.id} className="px-4 py-3 space-y-1">
                     <div className="flex items-start justify-between gap-2">
                       <div>
@@ -293,15 +323,40 @@ export default function ManagerRepDetailPage() {
   )
 }
 
+function FilterBar({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="flex items-center gap-1 flex-wrap">
+      <Filter style={{ width: 11, height: 11, color: '#484F58', flexShrink: 0 }} />
+      {FILTER_OPTIONS.map((opt) => (
+        <button
+          key={opt}
+          onClick={() => onChange(opt)}
+          className="px-2 py-0.5 rounded text-xs transition-colors"
+          style={{
+            background: value === opt ? 'rgba(240,165,0,0.15)' : 'transparent',
+            color: value === opt ? '#F0A500' : '#6E7681',
+            border: value === opt ? '1px solid rgba(240,165,0,0.3)' : '1px solid transparent',
+            fontWeight: value === opt ? 600 : 400,
+          }}
+        >
+          {FILTER_LABELS[opt]}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function ProgressBar({ label, current, target, suffix = '' }: { label: string; current: number; target: number; suffix?: string }) {
   const pct = Math.min(Math.round((current / target) * 100), 100)
   const color = pct >= 100 ? '#3FB950' : pct >= 60 ? '#F0A500' : '#F87171'
+  const displayCurrent = Math.min(current, target)
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
         <span style={{ color: '#8B949E', fontSize: '0.75rem' }}>{label}</span>
         <span style={{ color, fontSize: '0.75rem', fontWeight: 600 }}>
-          {current}{suffix} / {target}{suffix}
+          {displayCurrent}{suffix} / {target}{suffix}
+          {pct >= 100 && <span style={{ marginLeft: 4 }}>✓</span>}
         </span>
       </div>
       <div className="h-1.5 rounded-full" style={{ background: '#21262D' }}>

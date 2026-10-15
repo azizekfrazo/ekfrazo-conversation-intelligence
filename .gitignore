@@ -28,3 +28,14 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Backup and stale DB files
+*.db.bak
+*.db-journal.stale
+server/prisma/*.db*
+
+# Temp / session outputs
+"Claude outputs/"
+Claude outputs/
+server/prisma/seed_demo.py
+server/run-update.bat

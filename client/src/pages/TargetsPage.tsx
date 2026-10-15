@@ -62,7 +62,7 @@ export default function TargetsPage() {
       bg: 'rgba(56,189,248,0.1)',
     },
     {
-      label: 'Quality Score',
+      label: 'Productivity Score',
       sublabel: 'This Month',
       current: actuals.avgScore,
       target: target.qualityScoreTarget,
@@ -124,7 +124,7 @@ export default function TargetsPage() {
                   <div style={{ color: '#6E7681', fontSize: '0.75rem' }}>{sublabel}</div>
                 </div>
                 <div className="ml-auto text-right">
-                  <div style={{ color, fontSize: '1.5rem', fontWeight: 800, lineHeight: 1 }}>{fmt(current)}</div>
+                  <div style={{ color, fontSize: '1.5rem', fontWeight: 800, lineHeight: 1 }}>{fmt(Math.min(current, tgt))}</div>
                   <div style={{ color: '#484F58', fontSize: '0.75rem' }}>of {fmt(tgt)}</div>
                 </div>
               </div>
@@ -174,7 +174,7 @@ export default function TargetsPage() {
               color: '#F0A500',
             },
             {
-              label: 'Quality Score',
+              label: 'Productivity Score',
               value: `${actuals.avgScore}/100`,
               total: null,
               color: actuals.avgScore >= target.qualityScoreTarget ? '#3FB950' : '#F0A500',

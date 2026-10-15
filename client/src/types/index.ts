@@ -258,6 +258,8 @@ export interface VisitRecord {
   punchOutTime: string | null
   visitOutcome: 'completed' | 'not-available' | null
   visitStatus: 'in-progress' | 'done' | null
+  preNotes: string | null
+  postNotes: string | null
   createdAt: string
   doctor?: { id: string; fullName: string; specialty: string; hospitalOrClinic: string | null }
 }

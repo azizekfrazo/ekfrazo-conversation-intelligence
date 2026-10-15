@@ -226,8 +226,8 @@ async function main() {
     data: {
       fullName: 'Dr. Rajesh Mehta',
       specialty: 'Diabetology',
-      city: 'Pune',
-      hospitalOrClinic: 'Jehangir Hospital',
+      city: 'Bengaluru',
+      hospitalOrClinic: 'Manipal Hospital, Bengaluru',
       personaType: 'PriceSensitive',
       seniorityLevel: 'MidLevel',
       therapyArea: 'Endocrinology',
@@ -244,8 +244,8 @@ async function main() {
     data: {
       fullName: 'Dr. Priya Sharma',
       specialty: 'Oncology',
-      city: 'Hyderabad',
-      hospitalOrClinic: 'AIIMS Hyderabad',
+      city: 'Bengaluru',
+      hospitalOrClinic: 'Basavatarakam Indo American Cancer Hospital, Bengaluru',
       personaType: 'Skeptical',
       seniorityLevel: 'Senior',
       therapyArea: 'Oncology',
@@ -280,8 +280,8 @@ async function main() {
     data: {
       fullName: 'Dr. Meera Patel',
       specialty: 'General Physician',
-      city: 'Chennai',
-      hospitalOrClinic: 'Patel Medical Centre',
+      city: 'Bengaluru',
+      hospitalOrClinic: 'Apollo Clinic, Bengaluru',
       personaType: 'FriendlyButReserved',
       seniorityLevel: 'MidLevel',
       therapyArea: 'Endocrinology',
@@ -702,6 +702,108 @@ RECOMMENDED NEXT COACHING: Role-play the follow-up Thursday meeting with harder 
     ],
   })
   console.log('✅ Conversation thread created')
+
+  // ─── Doctor Assignments (manager portal) ─────────────────────────────────────
+  const arjunRep  = salesReps[0]  // Arjun Kapoor  – Bengaluru North
+  const priyaRep  = salesReps[1]  // Priya Sharma  – Bengaluru South
+  const raviRep   = salesReps[2]  // Ravi Mehta    – Bengaluru East
+  const sunitaRep = salesReps[3]  // Sunita Rao    – Bengaluru West
+  const sureshRep = salesReps[4]  // Suresh Kumar  – Bengaluru Central
+
+  await prisma.doctorAssignment.createMany({
+    data: [
+      { salesRepId: arjunRep.id,  doctorId: drAnanya.id, area: 'Bengaluru North' },
+      { salesRepId: arjunRep.id,  doctorId: drRajesh.id, area: 'Bengaluru North' },
+      { salesRepId: arjunRep.id,  doctorId: drVikram.id, area: 'Bengaluru North' },
+      { salesRepId: priyaRep.id,  doctorId: drPriya.id,  area: 'Bengaluru South' },
+      { salesRepId: priyaRep.id,  doctorId: drMeera.id,  area: 'Bengaluru South' },
+      { salesRepId: priyaRep.id,  doctorId: drAnanya.id, area: 'Bengaluru South' },
+      { salesRepId: raviRep.id,   doctorId: drRajesh.id, area: 'Bengaluru East'  },
+      { salesRepId: raviRep.id,   doctorId: drMeera.id,  area: 'Bengaluru East'  },
+      { salesRepId: sunitaRep.id, doctorId: drVikram.id, area: 'Bengaluru West'  },
+      { salesRepId: sunitaRep.id, doctorId: drPriya.id,  area: 'Bengaluru West'  },
+      { salesRepId: sureshRep.id, doctorId: drAnanya.id, area: 'Bengaluru Central' },
+      { salesRepId: sureshRep.id, doctorId: drRajesh.id, area: 'Bengaluru Central' },
+    ],
+  })
+  console.log('✅ Doctor assignments created')
+
+  // ─── Visit Records (manager portal) ──────────────────────────────────────────
+  // weekStart() in the API uses a 30-day rolling window (720 h).
+  // todayStart() uses a 24-hour rolling window.
+  // Arjun: 18 visits — at 0.9 × weeklyTarget(20) = 18 → status Excellent.
+  // Priya: 14 visits, 3 today → On Track.
+  // Ravi:  10 visits, 3 today → On Track.
+  // Sunita: 8 visits, 2 today → Behind.
+  // Suresh: 5 visits, 1 today → Behind.
+
+  const hAgo = (hours: number): Date => new Date(Date.now() - hours * 60 * 60 * 1000)
+
+  await prisma.visitRecord.createMany({
+    data: [
+      // ── Arjun (18 total, 3 today) ────────────────────────────────────────────
+      { salesRepId: arjunRep.id, doctorId: drAnanya.id, date: hAgo(2),   outcome: 'visited_offline', notes: 'Discussed AFFIRM-3 safety data' },
+      { salesRepId: arjunRep.id, doctorId: drRajesh.id, date: hAgo(5),   outcome: 'visited_offline' },
+      { salesRepId: arjunRep.id, doctorId: drVikram.id, date: hAgo(9),   outcome: 'not_available' },
+      { salesRepId: arjunRep.id, doctorId: drAnanya.id, date: hAgo(26),  outcome: 'visited_offline', notes: 'Follow-up on trial data request' },
+      { salesRepId: arjunRep.id, doctorId: drRajesh.id, date: hAgo(30),  outcome: 'visited_offline' },
+      { salesRepId: arjunRep.id, doctorId: drVikram.id, date: hAgo(50),  outcome: 'visited_offline' },
+      { salesRepId: arjunRep.id, doctorId: drAnanya.id, date: hAgo(54),  outcome: 'not_available' },
+      { salesRepId: arjunRep.id, doctorId: drRajesh.id, date: hAgo(75),  outcome: 'visited_offline' },
+      { salesRepId: arjunRep.id, doctorId: drVikram.id, date: hAgo(80),  outcome: 'rescheduled' },
+      { salesRepId: arjunRep.id, doctorId: drAnanya.id, date: hAgo(120), outcome: 'visited_offline', notes: 'KOL engagement discussion' },
+      { salesRepId: arjunRep.id, doctorId: drRajesh.id, date: hAgo(148), outcome: 'visited_offline' },
+      { salesRepId: arjunRep.id, doctorId: drVikram.id, date: hAgo(165), outcome: 'visited_offline' },
+      { salesRepId: arjunRep.id, doctorId: drAnanya.id, date: hAgo(200), outcome: 'visited_offline' },
+      { salesRepId: arjunRep.id, doctorId: drRajesh.id, date: hAgo(262), outcome: 'not_available' },
+      { salesRepId: arjunRep.id, doctorId: drVikram.id, date: hAgo(310), outcome: 'visited_offline' },
+      { salesRepId: arjunRep.id, doctorId: drAnanya.id, date: hAgo(400), outcome: 'visited_offline' },
+      { salesRepId: arjunRep.id, doctorId: drRajesh.id, date: hAgo(500), outcome: 'visited_offline' },
+      { salesRepId: arjunRep.id, doctorId: drVikram.id, date: hAgo(650), outcome: 'rescheduled' },
+      // ── Priya (14 total, 3 today) ────────────────────────────────────────────
+      { salesRepId: priyaRep.id, doctorId: drPriya.id,  date: hAgo(3),   outcome: 'visited_offline', notes: 'Nexovir CNS data review' },
+      { salesRepId: priyaRep.id, doctorId: drMeera.id,  date: hAgo(7),   outcome: 'visited_offline' },
+      { salesRepId: priyaRep.id, doctorId: drAnanya.id, date: hAgo(18),  outcome: 'visited_offline' },
+      { salesRepId: priyaRep.id, doctorId: drPriya.id,  date: hAgo(48),  outcome: 'not_available' },
+      { salesRepId: priyaRep.id, doctorId: drMeera.id,  date: hAgo(72),  outcome: 'visited_offline' },
+      { salesRepId: priyaRep.id, doctorId: drAnanya.id, date: hAgo(100), outcome: 'visited_offline' },
+      { salesRepId: priyaRep.id, doctorId: drPriya.id,  date: hAgo(145), outcome: 'visited_offline' },
+      { salesRepId: priyaRep.id, doctorId: drMeera.id,  date: hAgo(200), outcome: 'rescheduled' },
+      { salesRepId: priyaRep.id, doctorId: drAnanya.id, date: hAgo(260), outcome: 'visited_offline' },
+      { salesRepId: priyaRep.id, doctorId: drPriya.id,  date: hAgo(350), outcome: 'visited_offline' },
+      { salesRepId: priyaRep.id, doctorId: drMeera.id,  date: hAgo(430), outcome: 'visited_offline' },
+      { salesRepId: priyaRep.id, doctorId: drAnanya.id, date: hAgo(510), outcome: 'not_available' },
+      { salesRepId: priyaRep.id, doctorId: drPriya.id,  date: hAgo(590), outcome: 'visited_offline' },
+      { salesRepId: priyaRep.id, doctorId: drMeera.id,  date: hAgo(670), outcome: 'visited_offline' },
+      // ── Ravi (10 total, 3 today) ─────────────────────────────────────────────
+      { salesRepId: raviRep.id, doctorId: drRajesh.id, date: hAgo(4),   outcome: 'visited_offline' },
+      { salesRepId: raviRep.id, doctorId: drMeera.id,  date: hAgo(11),  outcome: 'visited_offline', notes: 'Glytara adherence plan' },
+      { salesRepId: raviRep.id, doctorId: drRajesh.id, date: hAgo(20),  outcome: 'visited_offline' },
+      { salesRepId: raviRep.id, doctorId: drMeera.id,  date: hAgo(60),  outcome: 'not_available' },
+      { salesRepId: raviRep.id, doctorId: drRajesh.id, date: hAgo(110), outcome: 'visited_offline' },
+      { salesRepId: raviRep.id, doctorId: drMeera.id,  date: hAgo(200), outcome: 'visited_offline' },
+      { salesRepId: raviRep.id, doctorId: drRajesh.id, date: hAgo(320), outcome: 'rescheduled' },
+      { salesRepId: raviRep.id, doctorId: drMeera.id,  date: hAgo(440), outcome: 'visited_offline' },
+      { salesRepId: raviRep.id, doctorId: drRajesh.id, date: hAgo(560), outcome: 'visited_offline' },
+      { salesRepId: raviRep.id, doctorId: drMeera.id,  date: hAgo(680), outcome: 'not_available' },
+      // ── Sunita (8 total, 2 today) ────────────────────────────────────────────
+      { salesRepId: sunitaRep.id, doctorId: drVikram.id, date: hAgo(5),   outcome: 'visited_offline' },
+      { salesRepId: sunitaRep.id, doctorId: drPriya.id,  date: hAgo(10),  outcome: 'visited_offline', notes: 'Nexovir resistance patterns' },
+      { salesRepId: sunitaRep.id, doctorId: drVikram.id, date: hAgo(50),  outcome: 'not_available' },
+      { salesRepId: sunitaRep.id, doctorId: drPriya.id,  date: hAgo(140), outcome: 'visited_offline' },
+      { salesRepId: sunitaRep.id, doctorId: drVikram.id, date: hAgo(280), outcome: 'visited_offline' },
+      { salesRepId: sunitaRep.id, doctorId: drPriya.id,  date: hAgo(380), outcome: 'rescheduled' },
+      { salesRepId: sunitaRep.id, doctorId: drVikram.id, date: hAgo(520), outcome: 'visited_offline' },
+      { salesRepId: sunitaRep.id, doctorId: drPriya.id,  date: hAgo(670), outcome: 'visited_offline' },
+      // ── Suresh (5 total, 1 today) ────────────────────────────────────────────
+      { salesRepId: sureshRep.id, doctorId: drAnanya.id, date: hAgo(12),  outcome: 'visited_offline' },
+      { salesRepId: sureshRep.id, doctorId: drRajesh.id, date: hAgo(120), outcome: 'visited_offline', notes: 'Cardovix pricing discussion' },
+      { salesRepId: sureshRep.id, doctorId: drAnanya.id, date: hAgo(280), outcome: 'not_available' },
+      { salesRepId: sureshRep.id, doctorId: drRajesh.id, date: hAgo(480), outcome: 'visited_offline' },
+      { salesRepId: sureshRep.id, doctorId: drAnanya.id, date: hAgo(660), outcome: 'visited_offline' },
+    ],
+  })
+  console.log('✅ Visit records seeded (Arjun: 18, Priya: 14, Ravi: 10, Sunita: 8, Suresh: 5)')
 
   console.log('\n🎉 Seed complete! Demo data ready.')
   console.log('   Login: arjun.kapoor@ekfrazo.com')

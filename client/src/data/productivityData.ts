@@ -76,11 +76,11 @@ function generateHeatmap(): HeatmapDay[] {
 
 export const myMetrics: RepMetrics = {
   id: 'rep-me',
-  name: 'Arjun Mehta',
-  initials: 'AM',
+  name: 'Arjun Kapoor',
+  initials: 'AK',
   rank: 2,
-  weeklyScores: [62, 65, 71, 68, 74, 72, 78, 76, 80, 82, 79, 85],
-  weeklySessions: [1, 2, 1, 3, 2, 2, 3, 2, 3, 3, 4, 3],
+  weeklyScores: [68, 70, 73, 71, 75, 74, 78, 77, 82, 83, 81, 85],
+  weeklySessions: [1, 1, 2, 1, 2, 2, 3, 2, 3, 3, 4, 3],
   streak: 8,
   weeklyGoal: 4,
   weeklyDone: 3,
@@ -92,9 +92,9 @@ export const myMetrics: RepMetrics = {
     adaptability: 69,
     rapport: 76,
   },
-  totalSessions: 29,
-  avgScore: 76,
-  achievements: ['first_session', 'streak_7', 'score_85'],
+  totalSessions: 38,
+  avgScore: 79,
+  achievements: ['first_session', 'streak_7', 'score_85', 'ten_sessions'],
 }
 
 export const leaderboard: RepMetrics[] = [
@@ -165,7 +165,7 @@ export const teamGoals: TeamGoal[] = [
   { label: 'Weekly Sessions',      current: 3,  target: 4,  unit: 'sessions', color: '#F0A500' },
   { label: 'Avg Score',            current: 76, target: 85, unit: 'pts',      color: '#58A6FF' },
   { label: 'Active Streak',        current: 8,  target: 30, unit: 'days',     color: '#3FB950' },
-  { label: 'Sessions This Month',  current: 29, target: 50, unit: 'total',    color: '#BC8CFF' },
+  { label: 'Sessions This Month',  current: 38, target: 50, unit: 'total',    color: '#BC8CFF' },
 ]
 
 export const achievements: Achievement[] = [
@@ -187,7 +187,7 @@ export const achievements: Achievement[] = [
   {
     id: 'ten_sessions',  label: 'Consistent Rep', icon: '📈',
     desc: '10 practice sessions completed',
-    unlocked: false,
+    unlocked: true, unlockedDate: 'Oct 1',
   },
   {
     id: 'streak_21',     label: 'Marathon Rep',   icon: '🏃',

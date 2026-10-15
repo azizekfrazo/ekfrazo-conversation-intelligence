@@ -64,6 +64,8 @@ export default function DoctorWorkspacePage() {
   const [elapsed, setElapsed] = useState(0)
   const [visitLoading, setVisitLoading] = useState(false)
   const [showEndPanel, setShowEndPanel] = useState(false)
+  const [preNotes, setPreNotes] = useState('')
+  const [postNotes, setPostNotes] = useState('')
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
@@ -94,11 +96,12 @@ export default function DoctorWorkspacePage() {
       const user = getStoredUser()
       const repId = (user as any)?.repId ?? user?.id ?? 'demo-rep'
       const { lat, lng } = await captureGPS()
-      const res = await api.post('/api/visits/punch-in', { doctorId: id, repId, lat, lng })
+      const res = await api.post('/api/visits/punch-in', { doctorId: id, repId, lat, lng, preNotes: preNotes.trim() || null })
       const data: ActiveVisit = { visitId: res.data.visitId, punchInTime: Date.now() }
       setActiveVisit(data)
       setElapsed(0)
       setShowEndPanel(false)
+      setPreNotes('')
       localStorage.setItem(`visit_${id}`, JSON.stringify(data))
     } catch (err) {
       console.error('Punch-in failed', err)
@@ -112,10 +115,11 @@ export default function DoctorWorkspacePage() {
     setVisitLoading(true)
     try {
       const { lat, lng } = await captureGPS()
-      await api.post('/api/visits/punch-out', { visitId: activeVisit.visitId, lat, lng, outcome })
+      await api.post('/api/visits/punch-out', { visitId: activeVisit.visitId, lat, lng, outcome, postNotes: postNotes.trim() || null })
       setActiveVisit(null)
       setElapsed(0)
       setShowEndPanel(false)
+      setPostNotes('')
       localStorage.removeItem(`visit_${id}`)
     } catch (err) {
       console.error('Punch-out failed', err)
@@ -234,7 +238,18 @@ export default function DoctorWorkspacePage() {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-col items-end gap-2 shrink-0">
+            {!activeVisit && (
+              <textarea
+                value={preNotes}
+                onChange={e => setPreNotes(e.target.value)}
+                placeholder="Pre-visit notes (optional)…"
+                rows={2}
+                className="w-52 text-xs px-2 py-1.5 rounded-lg resize-none outline-none"
+                style={{ background: '#1C2128', border: '1px solid #30363D', color: '#C9D1D9', lineHeight: 1.5 }}
+              />
+            )}
+            <div className="flex items-center gap-2">
             {!activeVisit ? (
               <button
                 onClick={handleStartVisit}
@@ -260,10 +275,20 @@ export default function DoctorWorkspacePage() {
                 {showEndPanel && (
                   <div
                     className="absolute right-0 top-full mt-1.5 rounded-xl shadow-xl z-50 overflow-hidden"
-                    style={{ background: '#1C2128', border: '1px solid #30363D', minWidth: 200 }}
+                    style={{ background: '#1C2128', border: '1px solid #30363D', minWidth: 220 }}
                   >
                     <div className="px-3 py-2" style={{ borderBottom: '1px solid #21262D' }}>
                       <p style={{ color: '#8B949E', fontSize: '0.75rem' }}>How did the visit go?</p>
+                    </div>
+                    <div className="px-3 py-2" style={{ borderBottom: '1px solid #21262D' }}>
+                      <textarea
+                        value={postNotes}
+                        onChange={e => setPostNotes(e.target.value)}
+                        placeholder="Post-visit notes (optional)…"
+                        rows={2}
+                        className="w-full text-xs px-2 py-1.5 rounded resize-none outline-none"
+                        style={{ background: '#21262D', border: '1px solid #30363D', color: '#C9D1D9', lineHeight: 1.5 }}
+                      />
                     </div>
                     <button
                       onClick={() => handleEndVisit('completed')}
@@ -299,6 +324,7 @@ export default function DoctorWorkspacePage() {
             <Button variant="outline" size="icon" onClick={() => setShowEdit(true)}>
               <Pencil className="h-3.5 w-3.5" />
             </Button>
+            </div>
           </div>
         </div>
 

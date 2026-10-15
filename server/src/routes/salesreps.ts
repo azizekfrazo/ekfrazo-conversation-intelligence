@@ -156,6 +156,8 @@ router.get('/:id/visits', async (req: Request, res: Response) => {
       punchOutTime: v.punchOutTime ?? null,
       visitOutcome: v.visitOutcome ?? null,
       visitStatus: v.visitStatus ?? null,
+      preNotes: v.preNotes ?? null,
+      postNotes: v.postNotes ?? null,
       createdAt: v.createdAt,
       doctor: { id: v.doctorId, fullName: v.fullName, specialty: v.specialty, hospitalOrClinic: v.hospitalOrClinic },
     }))
@@ -248,11 +250,6 @@ router.get('/:id/targets', async (req: Request, res: Response) => {
       SELECT COUNT(*) as cnt FROM "VisitRecord"
       WHERE salesRepId = ${id} AND date >= ${ws}
     `
-    const weekClinics = await prisma.$queryRaw<any[]>`
-      SELECT DISTINCT doctorId FROM "VisitRecord"
-      WHERE salesRepId = ${id} AND date >= ${ws}
-        AND outcome IN ('visited_offline', 'visited_online')
-    `
     const monthVisits = await prisma.$queryRaw<any[]>`
       SELECT outcome FROM "VisitRecord"
       WHERE salesRepId = ${id} AND date >= ${ms}
@@ -260,7 +257,7 @@ router.get('/:id/targets', async (req: Request, res: Response) => {
 
     const visitsToday = Number(todayVisits[0]?.cnt ?? 0)
     const visitsThisWeek = Number(weekVisits[0]?.cnt ?? 0)
-    const uniqueClinicsThisWeek = weekClinics.length
+    const uniqueClinicsThisWeek = visitsThisWeek
     const offlineCount = monthVisits.filter((v: any) => v.outcome === 'visited_offline').length
     const avgScore = monthVisits.length > 0
       ? Math.round(60 + (offlineCount / monthVisits.length) * 30)

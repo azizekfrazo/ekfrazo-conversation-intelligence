@@ -11,7 +11,7 @@ const STATS = [
 ]
 
 const LEADERBOARD = [
-  { medal: '🥇', name: 'Arjun Sharma',  score: 88 },
+  { medal: '🥇', name: 'Arjun Kapoor',  score: 88 },
   { medal: '🥈', name: 'Priya Singh',   score: 82 },
   { medal: '🥉', name: 'Vikram Nair',   score: 79 },
 ]
@@ -23,22 +23,22 @@ export default function LoginPage() {
     try {
       // Try to get Arjun's repId from API
       const res = await api.get('/api/salesreps')
-      const arjun = res.data.find((r: any) => r.email === 'arjun@ekfrazo.demo') || res.data[0]
+      const arjun = res.data.find((r: any) => r.email === 'arjun.kapoor@ekfrazo.com') || res.data[0]
       storeUser({
         id: arjun?.id || 'demo-rep-1',
-        name: 'Arjun Sharma',
-        email: 'arjun@ekfrazo.demo',
+        name: 'Arjun Kapoor',
+        email: 'arjun.kapoor@ekfrazo.com',
         role: 'rep',
-        territory: 'Bengaluru South',
+        territory: 'Bengaluru North',
         repId: arjun?.id || null,
       } as any)
     } catch {
       storeUser({
         id: 'demo-rep-1',
-        name: 'Arjun Sharma',
-        email: 'arjun@ekfrazo.demo',
+        name: 'Arjun Kapoor',
+        email: 'arjun.kapoor@ekfrazo.com',
         role: 'rep',
-        territory: 'Bengaluru South',
+        territory: 'Bengaluru North',
       } as any)
     }
     navigate('/dashboard')
@@ -106,7 +106,7 @@ export default function LoginPage() {
                     Enter as Demo Sales Representative
                   </div>
                   <div style={{ color: '#8B949E', fontSize: '0.8125rem', marginTop: 2 }}>
-                    Arjun Sharma · Bengaluru South Territory
+                    Arjun Kapoor · Bengaluru North Territory
                   </div>
                 </div>
               </div>
