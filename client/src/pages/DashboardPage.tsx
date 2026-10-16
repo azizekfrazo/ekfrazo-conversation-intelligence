@@ -276,7 +276,7 @@ export default function DashboardPage() {
     v => v.followUp && v.followUp.trim() && !dismissedFollowUps.has(v.id),
   )
 
-  const { data: targetData } = useQuery<TargetData>({
+  const { data: targetData, isLoading: targetsLoading } = useQuery<TargetData>({
     queryKey: ['my-targets', repId],
     queryFn: () => api.get(`/api/salesreps/${repId}/targets`).then(r => r.data),
     enabled: !!repId,
@@ -449,16 +449,16 @@ export default function DashboardPage() {
         {[
           {
             label: 'Visits Today',
-            value: actuals?.visitsToday ?? 0,
-            sub: `Target: ${target?.dailyVisitTarget ?? 5}`,
+            value: targetsLoading ? '—' : (actuals?.visitsToday ?? 0),
+            sub: targetsLoading ? '' : `Target: ${target?.dailyVisitTarget ?? 5}`,
             color: '#58A6FF',
             pct: dailyPct,
             onClick: undefined,
           },
           {
             label: 'Visits This Week',
-            value: actuals?.visitsThisWeek ?? 0,
-            sub: `Target: ${target?.weeklyClinicTarget ?? 20}`,
+            value: targetsLoading ? '—' : (actuals?.visitsThisWeek ?? 0),
+            sub: targetsLoading ? '' : `Target: ${target?.weeklyClinicTarget ?? 20}`,
             color: '#BC8CFF',
             pct: actuals && target ? Math.min(100, Math.round((actuals.visitsThisWeek / (target.weeklyClinicTarget || 1)) * 100)) : 0,
             onClick: undefined,

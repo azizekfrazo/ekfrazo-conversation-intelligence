@@ -6,8 +6,13 @@ const router = Router()
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 function todayStart() {
-  // 24-hour rolling window so demo data always appears
-  return new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  // IST midnight (UTC+5:30) — ensures "today" matches what the browser shows in India
+  const istOffset = 330 * 60 * 1000
+  const istNow = new Date(Date.now() + istOffset)
+  const y = istNow.getUTCFullYear()
+  const m = istNow.getUTCMonth()
+  const d = istNow.getUTCDate()
+  return new Date(Date.UTC(y, m, d) - istOffset).toISOString()
 }
 
 function weekStart() {

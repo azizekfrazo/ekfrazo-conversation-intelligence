@@ -38,13 +38,22 @@ const OUTCOME_COLOR: Record<string, string> = {
 const FILTER_OPTIONS = ['all', 'today', 'week', 'month'] as const
 const FILTER_LABELS: Record<string, string> = { all: '14 Days', today: 'Today', week: 'This Week', month: 'This Month' }
 
+// Returns YYYY-MM-DD in IST regardless of browser timezone
+function toISTDate(date: Date): string {
+  return date.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
+}
+
 function filterByDate(dateStr: string | null | undefined, filter: string): boolean {
   if (!dateStr) return filter === 'all'
   const d = new Date(dateStr)
   const now = new Date()
-  if (filter === 'today') return d.toDateString() === now.toDateString()
+  if (filter === 'today') return toISTDate(d) === toISTDate(now)
   if (filter === 'week') return d >= new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-  if (filter === 'month') return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+  if (filter === 'month') {
+    const [dy, dm] = toISTDate(d).split('-').map(Number)
+    const [ny, nm] = toISTDate(now).split('-').map(Number)
+    return dy === ny && dm === nm
+  }
   return true
 }
 
@@ -89,7 +98,9 @@ export default function ManagerRepDetailPage() {
   const filteredVisits = (visits ?? []).filter((v) => filterByDate(v.date, visitFilter))
   const grouped: Record<string, VisitRecord[]> = {}
   filteredVisits.forEach((v) => {
-    const day = new Date(v.date).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })
+    const day = new Date(v.date).toLocaleDateString('en-IN', {
+      weekday: 'long', day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata',
+    })
     if (!grouped[day]) grouped[day] = []
     grouped[day].push(v)
   })
@@ -221,12 +232,12 @@ export default function ManagerRepDetailPage() {
                             <div className="flex items-center gap-1.5">
                               {v.punchInTime && (
                                 <span
-                                  title={`Punched in at ${new Date(v.punchInTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}${v.punchInLat ? ` · GPS: ${v.punchInLat.toFixed(4)}, ${v.punchInLng?.toFixed(4)}` : ''}`}
+                                  title={`Punched in at ${new Date(v.punchInTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })}${v.punchInLat ? ` · GPS: ${v.punchInLat.toFixed(4)}, ${v.punchInLng?.toFixed(4)}` : ''}`}
                                   className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs cursor-default"
                                   style={{ background: 'rgba(63,185,80,0.1)', color: '#3FB950', border: '1px solid rgba(63,185,80,0.25)' }}
                                 >
                                   <Navigation style={{ width: 9, height: 9 }} />
-                                  {new Date(v.punchInTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                  {new Date(v.punchInTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })}
                                 </span>
                               )}
                               <span
@@ -309,7 +320,7 @@ export default function ManagerRepDetailPage() {
                     </div>
                     {a.lastVisit && (
                       <div style={{ color: '#484F58', fontSize: '0.6875rem' }}>
-                        Last visit: {new Date(a.lastVisit).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                        Last visit: {new Date(a.lastVisit).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })}
                       </div>
                     )}
                   </div>
